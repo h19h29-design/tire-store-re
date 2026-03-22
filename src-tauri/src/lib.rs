@@ -1,0 +1,32 @@
+mod commands;
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_sql::Builder::default().build())
+        .setup(|app| {
+            if cfg!(debug_assertions) {
+                app.handle().plugin(
+                    tauri_plugin_log::Builder::default()
+                        .level(log::LevelFilter::Info)
+                        .build(),
+                )?;
+            }
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            commands::create_backup,
+            commands::create_backup_at,
+            commands::detect_import_files,
+            commands::ensure_runtime_ready,
+            commands::get_runtime_info,
+            commands::import_initial_data,
+            commands::parse_inventory_workbook,
+            commands::parse_sales_workbook,
+            commands::parse_vendor_price_workbook,
+            commands::apply_vendor_price_workbook,
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}

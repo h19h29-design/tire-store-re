@@ -1,0 +1,9 @@
+wave: 2026-03-13 v1.3 hotfix
+goal: dashboard load error + quick sale vertical fit + lookup list without inner scroll
+
+cli-1-dashboard-runtime: completed
+cli-2-sales-structure: completed
+cli-3-sales-css-density: completed
+cli-4-repro-validation: completed
+
+integrator: completed

@@ -1,0 +1,130 @@
+ALTER TABLE vehicles ADD COLUMN brand_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE vehicles ADD COLUMN normalized_brand TEXT NOT NULL DEFAULT '';
+
+CREATE INDEX IF NOT EXISTS idx_vehicles_brand
+  ON vehicles(normalized_brand);
+
+CREATE TABLE IF NOT EXISTS tire_brand_reference (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  brand_name TEXT NOT NULL UNIQUE,
+  normalized_brand TEXT NOT NULL UNIQUE,
+  source TEXT NOT NULL DEFAULT 'default',
+  is_active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS vehicle_brand_reference (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  brand_name TEXT NOT NULL UNIQUE,
+  normalized_brand TEXT NOT NULL UNIQUE,
+  source TEXT NOT NULL DEFAULT 'default',
+  is_active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS vehicle_model_reference (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  brand_name TEXT NOT NULL DEFAULT '',
+  model_name TEXT NOT NULL,
+  normalized_brand TEXT NOT NULL DEFAULT '',
+  normalized_model TEXT NOT NULL,
+  source TEXT NOT NULL DEFAULT 'default',
+  is_active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(normalized_brand, normalized_model)
+);
+
+INSERT OR IGNORE INTO tire_brand_reference (brand_name, normalized_brand) VALUES
+  ('한국', '한국'),
+  ('금호', '금호'),
+  ('넥센', '넥센'),
+  ('라우펜', '라우펜'),
+  ('미쉐린', '미쉐린'),
+  ('굿이어', '굿이어'),
+  ('브리지스톤', '브리지스톤'),
+  ('콘티넨탈', '콘티넨탈'),
+  ('피렐리', '피렐리'),
+  ('던롭', '던롭'),
+  ('요코하마', '요코하마'),
+  ('토요', '토요'),
+  ('쿠퍼', '쿠퍼'),
+  ('맥시스', '맥시스'),
+  ('팔켄', '팔켄');
+
+INSERT OR IGNORE INTO vehicle_brand_reference (brand_name, normalized_brand) VALUES
+  ('현대', '현대'),
+  ('기아', '기아'),
+  ('제네시스', '제네시스'),
+  ('쉐보레', '쉐보레'),
+  ('르노', '르노'),
+  ('쌍용', '쌍용'),
+  ('KG모빌리티', 'kg모빌리티'),
+  ('BMW', 'bmw'),
+  ('벤츠', '벤츠'),
+  ('아우디', '아우디'),
+  ('폭스바겐', '폭스바겐'),
+  ('볼보', '볼보'),
+  ('렉서스', '렉서스'),
+  ('토요타', '토요타'),
+  ('혼다', '혼다');
+
+INSERT OR IGNORE INTO vehicle_model_reference (brand_name, model_name, normalized_brand, normalized_model) VALUES
+  ('현대', '아반떼', '현대', '아반떼'),
+  ('현대', '쏘나타', '현대', '쏘나타'),
+  ('현대', '그랜저', '현대', '그랜저'),
+  ('현대', '싼타페', '현대', '싼타페'),
+  ('현대', '투싼', '현대', '투싼'),
+  ('현대', '팰리세이드', '현대', '팰리세이드'),
+  ('현대', '스타리아', '현대', '스타리아'),
+  ('현대', '포터', '현대', '포터'),
+  ('현대', '아이오닉5', '현대', '아이오닉5'),
+  ('현대', '아이오닉6', '현대', '아이오닉6'),
+  ('기아', '모닝', '기아', '모닝'),
+  ('기아', '레이', '기아', '레이'),
+  ('기아', 'K3', '기아', 'k3'),
+  ('기아', 'K5', '기아', 'k5'),
+  ('기아', 'K7', '기아', 'k7'),
+  ('기아', 'K8', '기아', 'k8'),
+  ('기아', 'K9', '기아', 'k9'),
+  ('기아', '쏘렌토', '기아', '쏘렌토'),
+  ('기아', '스포티지', '기아', '스포티지'),
+  ('기아', '카니발', '기아', '카니발'),
+  ('기아', '봉고', '기아', '봉고'),
+  ('기아', 'EV6', '기아', 'ev6'),
+  ('기아', 'EV9', '기아', 'ev9'),
+  ('제네시스', 'G70', '제네시스', 'g70'),
+  ('제네시스', 'G80', '제네시스', 'g80'),
+  ('제네시스', 'G90', '제네시스', 'g90'),
+  ('제네시스', 'GV70', '제네시스', 'gv70'),
+  ('제네시스', 'GV80', '제네시스', 'gv80'),
+  ('쉐보레', '스파크', '쉐보레', '스파크'),
+  ('쉐보레', '말리부', '쉐보레', '말리부'),
+  ('쉐보레', '트랙스', '쉐보레', '트랙스'),
+  ('쉐보레', '트레일블레이저', '쉐보레', '트레일블레이저'),
+  ('쉐보레', '콜로라도', '쉐보레', '콜로라도'),
+  ('르노', 'SM6', '르노', 'sm6'),
+  ('르노', 'QM6', '르노', 'qm6'),
+  ('르노', 'XM3', '르노', 'xm3'),
+  ('르노', '마스터', '르노', '마스터'),
+  ('쌍용', '티볼리', '쌍용', '티볼리'),
+  ('쌍용', '코란도', '쌍용', '코란도'),
+  ('KG모빌리티', '토레스', 'kg모빌리티', '토레스'),
+  ('KG모빌리티', '렉스턴', 'kg모빌리티', '렉스턴'),
+  ('BMW', '3시리즈', 'bmw', '3시리즈'),
+  ('BMW', '5시리즈', 'bmw', '5시리즈'),
+  ('BMW', 'X3', 'bmw', 'x3'),
+  ('BMW', 'X5', 'bmw', 'x5'),
+  ('벤츠', 'E클래스', '벤츠', 'e클래스'),
+  ('벤츠', 'C클래스', '벤츠', 'c클래스'),
+  ('벤츠', 'S클래스', '벤츠', 's클래스'),
+  ('벤츠', 'GLC', '벤츠', 'glc'),
+  ('아우디', 'A4', '아우디', 'a4'),
+  ('아우디', 'A6', '아우디', 'a6'),
+  ('아우디', 'Q5', '아우디', 'q5'),
+  ('폭스바겐', '티구안', '폭스바겐', '티구안'),
+  ('폭스바겐', '골프', '폭스바겐', '골프'),
+  ('볼보', 'XC60', '볼보', 'xc60'),
+  ('볼보', 'XC90', '볼보', 'xc90'),
+  ('렉서스', 'ES', '렉서스', 'es'),
+  ('토요타', '캠리', '토요타', '캠리'),
+  ('혼다', '어코드', '혼다', '어코드');

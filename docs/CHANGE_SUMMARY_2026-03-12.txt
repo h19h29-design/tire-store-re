@@ -1,0 +1,57 @@
+Tire Store 변경 요약 (2026-03-12)
+
+이번 라운드 핵심
+- 앱 시작 시 runtime/schema 준비를 자동으로 실행하도록 정리
+- import 경로에서도 tire sale_line에 판매 당시 원가 snapshot 저장
+- 기존 DB의 누락된 cost_price_snapshot을 안전하게 backfill하는 보정 기능 추가
+- 설정 화면에서 수동으로 데이터 보정을 다시 실행할 수 있는 버튼 추가
+
+주요 변경 파일
+- src-tauri/src/commands.rs
+- src-tauri/src/lib.rs
+- src/app/shell/AppShell.tsx
+- src/lib/desktop.ts
+- src/lib/types.ts
+- src/features/settings/SettingsPage.tsx
+
+기존 동작
+- 빠른판매 저장 시에는 cost_price_snapshot을 남겼지만 import 경로는 snapshot이 비어 있었음
+- 대시보드 순이익은 snapshot이 없으면 현재 items.default_cost_price fallback에 의존했음
+- 기존 DB에 snapshot 누락이 있어도 사용자가 별도 보정할 진입점이 없었음
+- 앱 시작 시 runtime 보정이 자동으로 돌지 않았음
+
+변경 후 동작
+- 앱 시작 시 ensure_runtime_ready를 호출해 schema/보정 점검을 먼저 실행
+- import 시 매칭된 tire item의 default_cost_price를 sale_lines.cost_price_snapshot에 저장
+- 기존 DB의 tire sale_line 중 item_id가 있고 snapshot이 NULL인 행은 현재 item 원가로 backfill
+- 설정 화면에 데이터 보정 실행 버튼을 추가해 수동 재실행 가능
+
+세부 구현
+- commands.rs
+  - ensure_runtime_ready Tauri command 추가
+  - sale_lines.cost_price_snapshot 컬럼 보강 함수 추가
+  - 누락 snapshot backfill SQL 추가
+  - import sale line seed에 cost_price_snapshot 추가
+  - import tire line 저장 시 matched item의 default_cost_price snapshot 저장
+- AppShell.tsx
+  - 앱 시작 useEffect에서 ensureRuntimeReady -> ensureReferenceData 순서로 실행
+- SettingsPage.tsx
+  - 데이터 보정 실행 버튼 추가
+  - 보정 결과를 상태 메시지와 팝업으로 표시
+- desktop.ts / types.ts
+  - ensureRuntimeReady invoke 및 결과 타입 추가
+
+테스트
+- npm run lint 통과
+- npm run build 통과
+- cargo test 통과
+- Rust 테스트 11개 통과
+
+추가된 테스트
+- matched tire import 시 cost_price_snapshot 저장 검증
+- 기존 DB의 누락 cost snapshot backfill 검증
+
+남은 리스크
+- 이미 잘못 import된 얼라이먼트/서비스 분류 데이터는 자동 backfill하지 않음
+- cost snapshot backfill은 item_id가 연결된 tire sale_line만 보정 가능
+- item 원가가 과거와 달랐던 오래된 import 데이터는 재import가 가장 정확함

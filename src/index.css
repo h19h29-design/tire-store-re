@@ -1,0 +1,50 @@
+:root {
+  font-family: "Malgun Gothic", "Segoe UI", sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color: #20180f;
+  background:
+    radial-gradient(circle at top left, rgba(249, 221, 165, 0.45), transparent 28%),
+    radial-gradient(circle at bottom right, rgba(196, 111, 52, 0.18), transparent 30%),
+    #f6efe3;
+  --ink: #24180f;
+  --muted: #635446;
+  --panel: #fffaf1;
+  --panel-border: rgba(96, 67, 35, 0.14);
+  --accent: #b85b25;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+#root {
+  min-height: 100vh;
+  padding: 2rem;
+}
+
+h1,
+h2,
+h3 {
+  color: var(--ink);
+}
+
+p,
+li {
+  color: var(--ink);
+}
