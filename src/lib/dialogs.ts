@@ -1,4 +1,4 @@
-import { message } from '@tauri-apps/plugin-dialog'
+import { confirm, message } from '@tauri-apps/plugin-dialog'
 
 type DialogKind = 'info' | 'warning' | 'error'
 
@@ -27,6 +27,28 @@ export async function showMessageDialog(text: string, options: DialogOptions = {
   if (typeof window !== 'undefined' && typeof window.alert === 'function') {
     window.alert(`${title}\n\n${text}`)
   }
+}
+
+export async function showConfirmDialog(text: string, options: DialogOptions = {}) {
+  const title = options.title ?? '확인'
+  const kind = options.kind ?? 'warning'
+
+  try {
+    return await confirm(text, {
+      title,
+      kind,
+      okLabel: '확인',
+      cancelLabel: '취소',
+    })
+  } catch (error) {
+    console.error('confirm dialog fallback', error)
+  }
+
+  if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
+    return window.confirm(`${title}\n\n${text}`)
+  }
+
+  return false
 }
 
 export async function showValidationDialog(issues: string[], title = '입력 확인') {

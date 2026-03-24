@@ -237,7 +237,7 @@ function buildSummary(
     tireSalesAmount,
     tireCostAmount,
     expenseAmount,
-    tireProfit: tireSalesAmount - tireCostAmount - cardFeeAmount - expenseAmount,
+    tireProfit: tireSalesAmount - tireCostAmount,
     netProfit: tireSalesAmount + serviceAmount - tireCostAmount - cardFeeAmount - expenseAmount,
   }
 }
@@ -345,7 +345,10 @@ async function loadSummaryByQuery(
         sale_lines.line_type AS lineType,
         COALESCE(sale_lines.quantity, 0) AS quantity,
         COALESCE(sale_lines.line_total, 0) AS lineTotal,
-        COALESCE(sale_lines.cost_price_snapshot, items.default_cost_price, 0) AS costPriceSnapshot,
+        CASE
+          WHEN COALESCE(sale_lines.cost_price_snapshot, 0) > 0 THEN COALESCE(sale_lines.cost_price_snapshot, 0)
+          ELSE COALESCE(items.default_cost_price, 0)
+        END AS costPriceSnapshot,
         COALESCE(items.brand_name, '') AS brandName,
         COALESCE(items.pattern_name, '') AS patternName,
         COALESCE(items.product_name, '') AS productName,

@@ -1727,11 +1727,6 @@ async fn backfill_missing_daily_expenses_from_detected_sales_workbook(
     app: &AppHandle,
     pool: &SqlitePool,
 ) -> i64 {
-    let detected_files = detect_import_files_internal(app);
-    let Some(sales_path) = detected_files.sales_path else {
-        return 0;
-    };
-
     let imported_sale_day_count = sqlx::query_scalar::<_, i64>(
         "SELECT COUNT(DISTINCT SUBSTR(sold_at, 1, 10)) FROM sales WHERE sale_number LIKE 'IMP-%'",
     )
@@ -1743,43 +1738,50 @@ async fn backfill_missing_daily_expenses_from_detected_sales_workbook(
         return 0;
     }
 
-    let parsed = match parse_sales_workbook_impl(&sales_path) {
-        Ok(parsed) => parsed,
-        Err(error) => {
-            eprintln!("failed to auto-backfill daily expenses from sales workbook: {error}");
-            return 0;
-        }
-    };
+    let imported_sale_dates = sqlx::query_scalar::<_, String>(
+        "SELECT DISTINCT SUBSTR(sold_at, 1, 10) FROM sales WHERE sale_number LIKE 'IMP-%'",
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default()
+    .into_iter()
+    .collect::<HashSet<_>>();
 
-    let expected_daily_expense_count = parsed
-        .day_summaries
-        .iter()
-        .filter(|summary| should_import_daily_expense_summary(summary))
-        .count() as i64;
-
-    if expected_daily_expense_count <= 0 {
+    if imported_sale_dates.is_empty() {
         return 0;
     }
 
-    let existing_daily_expense_count =
-        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM daily_expenses")
-            .fetch_one(pool)
-            .await
-            .unwrap_or(0);
+    let existing_expense_dates = sqlx::query_scalar::<_, String>("SELECT expense_date FROM daily_expenses")
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .collect::<HashSet<_>>();
 
-    if existing_daily_expense_count >= expected_daily_expense_count {
-        return 0;
-    }
+    for sales_path in candidate_sales_workbook_paths(app, pool).await {
+        let parsed = match parse_sales_workbook_impl(&sales_path) {
+            Ok(parsed) => parsed,
+            Err(error) => {
+                eprintln!(
+                    "failed to auto-backfill daily expenses from sales workbook {}: {}",
+                    sales_path, error
+                );
+                continue;
+            }
+        };
 
-    let mut backfilled_count = 0i64;
+        let mut backfilled_count = 0i64;
 
-    for summary in parsed.day_summaries {
-        if !should_import_daily_expense_summary(&summary) {
-            continue;
-        }
+        for summary in parsed.day_summaries {
+            if !should_import_daily_expense_summary(&summary)
+                || !imported_sale_dates.contains(&summary.sold_at)
+                || existing_expense_dates.contains(&summary.sold_at)
+            {
+                continue;
+            }
 
-        let insert_result = sqlx::query(
-            r#"
+            let insert_result = sqlx::query(
+                r#"
       INSERT INTO daily_expenses (
         expense_date,
         amount,
@@ -1788,27 +1790,32 @@ async fn backfill_missing_daily_expenses_from_detected_sales_workbook(
       ) VALUES (?, ?, ?, CURRENT_TIMESTAMP)
       ON CONFLICT(expense_date) DO NOTHING
       "#,
-        )
-        .bind(&summary.sold_at)
-        .bind(summary.expense_amount.max(0))
-        .bind(summary.expense_note.trim())
-        .execute(pool)
-        .await;
+            )
+            .bind(&summary.sold_at)
+            .bind(summary.expense_amount.max(0))
+            .bind(summary.expense_note.trim())
+            .execute(pool)
+            .await;
 
-        match insert_result {
-            Ok(result) => {
-                backfilled_count += result.rows_affected() as i64;
+            match insert_result {
+                Ok(result) => {
+                    backfilled_count += result.rows_affected() as i64;
+                }
+                Err(error) => {
+                    eprintln!(
+                        "failed to insert auto-backfilled daily expense for {}: {}",
+                        summary.sold_at, error
+                    );
+                }
             }
-            Err(error) => {
-                eprintln!(
-                    "failed to insert auto-backfilled daily expense for {}: {}",
-                    summary.sold_at, error
-                );
-            }
+        }
+
+        if backfilled_count > 0 {
+            return backfilled_count;
         }
     }
 
-    backfilled_count
+    0
 }
 
 async fn remove_card_fee_daily_expenses(pool: &SqlitePool) -> i64 {
@@ -2527,6 +2534,39 @@ fn detect_import_files_internal(app: &AppHandle) -> ImportFileHints {
         sales_path: latest_matching_xlsx(&downloads_dir, &["판매일보"])
             .map(|path| path.display().to_string()),
     }
+}
+
+async fn candidate_sales_workbook_paths(app: &AppHandle, pool: &SqlitePool) -> Vec<String> {
+    let mut candidates = Vec::<String>::new();
+    let mut seen = HashSet::<String>::new();
+
+    let detected_files = detect_import_files_internal(app);
+    if let Some(sales_path) = detected_files.sales_path {
+        if Path::new(&sales_path).exists() && seen.insert(sales_path.clone()) {
+            candidates.push(sales_path);
+        }
+    }
+
+    let imported_paths = sqlx::query_scalar::<_, String>(
+        r#"
+        SELECT source_file
+        FROM imports
+        WHERE LOWER(COALESCE(note, '')) LIKE '%sales=%'
+          AND LOWER(COALESCE(source_file, '')) LIKE '%.xlsx'
+        ORDER BY id DESC
+        "#,
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+
+    for source_file in imported_paths {
+        if Path::new(&source_file).exists() && seen.insert(source_file.clone()) {
+            candidates.push(source_file);
+        }
+    }
+
+    candidates
 }
 
 fn latest_matching_xlsx(directory: &Path, keywords: &[&str]) -> Option<PathBuf> {

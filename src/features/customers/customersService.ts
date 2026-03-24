@@ -67,36 +67,8 @@ const latestSaleLineSummaryExpression = `TRIM(
   END
 )`
 
-export async function searchCustomers(filters: Partial<CustomerSearchFilters> = {}) {
-  const mergedFilters = { ...defaultFilters, ...filters }
-  const rawQuery = mergedFilters.query.trim()
-  const normalizedTextQuery = normalizeText(rawQuery)
-  const normalizedPhoneQuery = normalizePhone(rawQuery)
-  const normalizedPlateQuery = normalizePlate(rawQuery)
-  const queryClauses: string[] = []
-  const queryBindValues: string[] = []
-
-  if (normalizedPlateQuery.length >= 2) {
-    queryClauses.push(`(vehicles.normalized_plate_number LIKE ? OR ${legacyVehiclePlateSql} LIKE ?)`)
-    queryBindValues.push(`%${normalizedPlateQuery}%`, `%${normalizedPlateQuery}%`)
-  }
-
-  if (normalizedPhoneQuery.length >= 4) {
-    queryClauses.push('customers.normalized_phone LIKE ?')
-    queryBindValues.push(`%${normalizedPhoneQuery}%`)
-  }
-
-  if (normalizedTextQuery.length >= 2) {
-    queryClauses.push(
-      "(LOWER(customers.name) LIKE '%' || LOWER(?) || '%' OR LOWER(vehicles.model_name) LIKE '%' || LOWER(?) || '%' OR LOWER(vehicles.brand_name) LIKE '%' || LOWER(?) || '%')",
-    )
-    queryBindValues.push(rawQuery, rawQuery, rawQuery)
-  }
-
-  const whereClause = queryClauses.length > 0 ? `(${queryClauses.join(' OR ')})` : '1 = 1'
-
-  return selectRows<CustomerListRow>(
-    `WITH sale_totals AS (
+function buildCustomerSearchQuery(whereClause: string) {
+  return `WITH sale_totals AS (
       SELECT
         sales.vehicle_id AS vehicleId,
         COUNT(*) AS visitCount,
@@ -151,10 +123,7 @@ export async function searchCustomers(filters: Partial<CustomerSearchFilters> = 
     latest_sale_lines AS (
       SELECT
         latest_sales.vehicleId AS vehicleId,
-        COALESCE(
-          GROUP_CONCAT(${latestSaleLineSummaryExpression}, ', '),
-          ''
-        ) AS latestTireSummary
+        COALESCE(GROUP_CONCAT(${latestSaleLineSummaryExpression}, ', '), '') AS latestTireSummary
       FROM latest_sales
       LEFT JOIN sale_lines
         ON sale_lines.sale_id = latest_sales.saleId
@@ -247,13 +216,45 @@ export async function searchCustomers(filters: Partial<CustomerSearchFilters> = 
         ) = '' THEN 1 ELSE 0
       END,
       vehicles.normalized_plate_number ASC,
-      vehicles.id DESC
-    LIMIT 300`,
-    queryBindValues,
-  )
+      vehicles.id DESC`
 }
 
-export async function updateCustomerVehicleRecord(input: CustomerRecordUpdateInput) {
+async function loadCustomerVehicleRecord(vehicleId: number) {
+  const rows = await selectRows<CustomerListRow>(`${buildCustomerSearchQuery('vehicles.id = ?')} LIMIT 1`, [vehicleId])
+  return rows[0] ?? null
+}
+
+export async function searchCustomers(filters: Partial<CustomerSearchFilters> = {}) {
+  const mergedFilters = { ...defaultFilters, ...filters }
+  const rawQuery = mergedFilters.query.trim()
+  const normalizedTextQuery = normalizeText(rawQuery)
+  const normalizedPhoneQuery = normalizePhone(rawQuery)
+  const normalizedPlateQuery = normalizePlate(rawQuery)
+  const queryClauses: string[] = []
+  const queryBindValues: string[] = []
+
+  if (normalizedPlateQuery.length >= 2) {
+    queryClauses.push(`(vehicles.normalized_plate_number LIKE ? OR ${legacyVehiclePlateSql} LIKE ?)`)
+    queryBindValues.push(`%${normalizedPlateQuery}%`, `%${normalizedPlateQuery}%`)
+  }
+
+  if (normalizedPhoneQuery.length >= 4) {
+    queryClauses.push('customers.normalized_phone LIKE ?')
+    queryBindValues.push(`%${normalizedPhoneQuery}%`)
+  }
+
+  if (normalizedTextQuery.length >= 2) {
+    queryClauses.push(
+      "(LOWER(customers.name) LIKE '%' || LOWER(?) || '%' OR LOWER(vehicles.model_name) LIKE '%' || LOWER(?) || '%' OR LOWER(vehicles.brand_name) LIKE '%' || LOWER(?) || '%')",
+    )
+    queryBindValues.push(rawQuery, rawQuery, rawQuery)
+  }
+
+  const whereClause = queryClauses.length > 0 ? `(${queryClauses.join(' OR ')})` : '1 = 1'
+  return selectRows<CustomerListRow>(`${buildCustomerSearchQuery(whereClause)} LIMIT 300`, queryBindValues)
+}
+
+export async function updateCustomerVehicleRecord(input: CustomerRecordUpdateInput): Promise<CustomerListRow> {
   const customerName = input.customerName.trim()
   const phone = input.phone.trim()
   const normalizedPhone = normalizePhone(phone)
@@ -329,6 +330,13 @@ export async function updateCustomerVehicleRecord(input: CustomerRecordUpdateInp
       input.vehicleId,
     ],
   )
+
+  const updatedRow = await loadCustomerVehicleRecord(input.vehicleId)
+  if (!updatedRow) {
+    throw new Error('저장한 고객 / 차량 정보를 다시 불러오지 못했습니다.')
+  }
+
+  return updatedRow
 }
 
 export async function getCustomerFilterOptions(): Promise<CustomerFilterOptions> {

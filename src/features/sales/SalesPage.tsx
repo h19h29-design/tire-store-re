@@ -76,24 +76,50 @@ function getEditableMaxQuantity(line: SaleDraftLine) {
   return Math.max(line.maxEditableQuantity ?? line.quantityAvailable, 1)
 }
 
-function resolveCartPricing(cart: SaleDraftLine[], rawPaymentTotal: number, serviceTotal: number) {
+function resolveCartPricing(
+  cart: SaleDraftLine[],
+  rawPaymentTotal: number,
+  serviceTotal: number,
+  options: {
+    preserveExistingPricing?: boolean
+  } = {},
+) {
   if (cart.length === 0) {
     return []
   }
 
   const quantityTotal = cart.reduce((sum, line) => sum + Math.max(0, line.quantity), 0)
+  const preserveExistingPricing = options.preserveExistingPricing === true
   const defaultTireTotal = cart.reduce(
     (sum, line) =>
       sum +
-      getDiscountedPrice(line.defaultSalePrice, line.defaultDiscountRate) * Math.max(0, line.quantity),
+      (preserveExistingPricing
+        ? line.lineTotalOverride ?? Math.max(0, line.unitPrice) * Math.max(0, line.quantity)
+        : getDiscountedPrice(line.defaultSalePrice, line.defaultDiscountRate) * Math.max(0, line.quantity)),
     0,
   )
   const targetTireTotal =
     rawPaymentTotal > 0 ? Math.max(0, rawPaymentTotal - serviceTotal) : defaultTireTotal
 
+  if (preserveExistingPricing && rawPaymentTotal <= 0) {
+    return cart.map((line) => {
+      const quantity = Math.max(0, line.quantity)
+      const lineTotal = line.lineTotalOverride ?? Math.max(0, line.unitPrice) * quantity
+      const unitPrice =
+        quantity > 0 ? Math.max(0, Math.round(lineTotal / quantity)) : Math.max(0, Math.round(line.unitPrice))
+      return {
+        ...line,
+        unitPrice,
+        lineTotalOverride: lineTotal,
+      }
+    })
+  }
+
   if (targetTireTotal <= 0 || quantityTotal <= 0) {
     return cart.map((line) => {
-      const unitPrice = getDiscountedPrice(line.defaultSalePrice, line.defaultDiscountRate)
+      const unitPrice = preserveExistingPricing
+        ? Math.max(0, Math.round(line.unitPrice))
+        : getDiscountedPrice(line.defaultSalePrice, line.defaultDiscountRate)
       return {
         ...line,
         unitPrice,
@@ -470,7 +496,9 @@ export function SalesPage() {
   const hasSelectedItems = cart.length > 0
   const isPaymentOnlySale = !hasSelectedItems && explicitServiceTotal === 0 && rawPaymentTotal > 0
   const hasManualCashAmount = cashAmount.trim() !== ''
-  const defaultResolvedCart = resolveCartPricing(cart, 0, explicitServiceTotal)
+  const defaultResolvedCart = resolveCartPricing(cart, 0, explicitServiceTotal, {
+    preserveExistingPricing: isEditMode,
+  })
   const defaultTireTotal = defaultResolvedCart.reduce(
     (sum, line) => sum + (line.lineTotalOverride ?? line.unitPrice * line.quantity),
     0,
@@ -478,13 +506,19 @@ export function SalesPage() {
   const defaultTotalAmount = defaultTireTotal + explicitServiceTotal
   const pricingPaymentTotal =
     !isEditMode && (hasManualCashAmount || rawPaymentTotal >= defaultTotalAmount) ? rawPaymentTotal : 0
-  const resolvedCart = resolveCartPricing(cart, pricingPaymentTotal, explicitServiceTotal)
+  const resolvedCart = resolveCartPricing(cart, pricingPaymentTotal, explicitServiceTotal, {
+    preserveExistingPricing: isEditMode,
+  })
   const tireTotal = resolvedCart.reduce((sum, line) => sum + (line.lineTotalOverride ?? line.unitPrice * line.quantity), 0)
   const effectiveExtraServiceAmount = isPaymentOnlySale ? rawPaymentTotal : rawExtraServiceAmount
   const totalAmount = tireTotal + alignmentServiceAmount + effectiveExtraServiceAmount
   const effectiveCardAmount = rawCardAmount
   const effectiveNaverAmount = rawNaverAmount
-  const effectiveCashAmount = hasManualCashAmount ? rawCashAmount : Math.max(totalAmount - rawCardAmount - rawNaverAmount, 0)
+  const effectiveCashAmount = hasManualCashAmount
+    ? rawCashAmount
+    : isEditMode
+      ? rawCashAmount
+      : Math.max(totalAmount - rawCardAmount - rawNaverAmount, 0)
   const paymentTotal = effectiveCardAmount + effectiveNaverAmount + effectiveCashAmount
   const paymentDiff = paymentTotal - totalAmount
   const cardFeeAmount = Math.round(effectiveCardAmount * 0.03) + Math.round(effectiveNaverAmount * 0.05)

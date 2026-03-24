@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { selectCount, selectFirst } from '../../lib/db'
-import { getRuntimeInfo } from '../../lib/desktop'
+import { getRuntimeInfo, refreshRuntimeReady } from '../../lib/desktop'
 import {
   findFirstInvalidField,
   focusFieldErrorTarget,
+  showConfirmDialog,
   showErrorDialog,
   showValidationDialog,
   type FieldValidationMap,
@@ -254,6 +255,7 @@ export function DashboardPage() {
   const [savingExpense, setSavingExpense] = useState(false)
   const [savingThreshold, setSavingThreshold] = useState(false)
   const [fieldErrors, setFieldErrors] = useState<FieldValidationMap<DashboardFieldKey>>({})
+  const attemptedExpenseRecoveryRef = useRef(false)
 
   useEffect(() => {
     if (rangeMode === 'date') {
@@ -323,6 +325,17 @@ export function DashboardPage() {
         logRejectedDashboardResult('latest import', importResult)
         logRejectedDashboardResult('latest backup', backupResult)
         logRejectedDashboardResult('expense history', expenseHistoryResult)
+
+        if (sales > 0 && nextExpenseHistory.length === 0 && !attemptedExpenseRecoveryRef.current) {
+          attemptedExpenseRecoveryRef.current = true
+          await refreshRuntimeReady()
+          if (!active) {
+            return
+          }
+          setStatus('기존 판매일보 지출 내역을 다시 확인하는 중입니다.')
+          setRefreshKey((current) => current + 1)
+          return
+        }
 
         const recoveredWarningCount =
           nextAnalytics.warnings.length +
@@ -501,10 +514,11 @@ export function DashboardPage() {
   }
 
   async function handleDeleteExpense(targetExpenseDate: string) {
-    if (
-      typeof window !== 'undefined' &&
-      !window.confirm(`${targetExpenseDate} 지출 내역을 삭제할까요?`)
-    ) {
+    const confirmed = await showConfirmDialog(`${targetExpenseDate} 지출 내역을 삭제할까요?`, {
+      title: '지출 삭제 확인',
+      kind: 'warning',
+    })
+    if (!confirmed) {
       return
     }
 
@@ -560,7 +574,11 @@ export function DashboardPage() {
   }
 
   async function handleDeleteSale(saleId: number) {
-    if (typeof window !== 'undefined' && !window.confirm('이 판매 내역을 삭제할까요? 타이어 재고도 같이 복구됩니다.')) {
+    const confirmed = await showConfirmDialog('판매 내역을 삭제할까요? 타이어 재고도 함께 복구됩니다.', {
+      title: '판매 삭제 확인',
+      kind: 'warning',
+    })
+    if (!confirmed) {
       return
     }
 

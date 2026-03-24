@@ -47,19 +47,6 @@ function createEditForm(row: CustomerListRow) {
   }
 }
 
-function createUpdatedCustomerRow(row: CustomerListRow, form: typeof defaultEditForm): CustomerListRow {
-  return {
-    ...row,
-    customerName: form.customerName.trim(),
-    phone: form.phone.trim(),
-    plateNumber: form.plateNumber.trim(),
-    vehicleBrand: form.vehicleBrand.trim(),
-    vehicleModel: form.vehicleModel.trim(),
-    odometer: Math.max(0, Math.floor(Number(form.odometer) || 0)),
-    memo: form.memo.trim(),
-  }
-}
-
 function isEditableElement(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) {
     return false
@@ -186,8 +173,7 @@ export function CustomersPage() {
 
     try {
       setSaving(true)
-      const updatedRow = createUpdatedCustomerRow(selectedRow, editForm)
-      await updateCustomerVehicleRecord({
+      const updatedRow = await updateCustomerVehicleRecord({
         vehicleId: selectedRow.id,
         customerId: selectedRow.customerId,
         customerName: editForm.customerName,
@@ -202,7 +188,7 @@ export function CustomersPage() {
       setRows((current) => current.map((row) => (row.id === updatedRow.id ? updatedRow : row)))
       setSelectedRow(updatedRow)
       setEditForm(createEditForm(updatedRow))
-      await refreshCustomers(undefined, selectedRow.id, updatedRow)
+      await refreshCustomers(undefined, updatedRow.id, updatedRow)
       setStatus('고객 / 차량 정보를 저장했습니다.')
       await showMessageDialog('고객 / 차량 정보를 저장했습니다.', {
         title: '고객 정보 저장',

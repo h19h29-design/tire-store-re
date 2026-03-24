@@ -531,7 +531,7 @@ export async function loadSaleForEdit(saleId: number): Promise<SaleEditDraft> {
         productName: row.productName ?? '',
         defaultCostPrice: Math.max(0, Number(row.defaultCostPrice ?? 0)),
         defaultSalePrice: Math.max(0, Number(row.unitPrice ?? row.defaultSalePrice ?? 0)),
-        defaultDiscountRate: 0,
+        defaultDiscountRate: Math.max(0, Number(row.defaultDiscountRate ?? 0)),
         quantityOnHand,
         quantityAvailable: currentQuantityAvailable,
         publicQuoteEnabled: Boolean(Number(row.publicQuoteEnabled ?? 0)),
