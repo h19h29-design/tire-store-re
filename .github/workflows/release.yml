@@ -1,0 +1,55 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish-windows:
+    runs-on: windows-latest
+    env:
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Validate release version
+        run: npm run release:check-version
+
+      - name: Build and upload NSIS installer
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tauriScript: npx tauri
+          tagName: v__VERSION__
+          releaseName: Tire Store v__VERSION__
+          releaseBody: |
+            Windows NSIS installer for Tire Store v__VERSION__.
+          releaseDraft: false
+          prerelease: false
+          generateReleaseNotes: true
+          args: --bundles nsis
+          releaseAssetNamePattern: "[name]_[version]_[arch][_setup][ext]"
