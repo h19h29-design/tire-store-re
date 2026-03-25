@@ -143,7 +143,7 @@ export function AppShell() {
         <div className="brand-block">
           <p className="eyebrow">타이어 매장 관리</p>
           <h1>매장 운영 데스크톱</h1>
-              <p className="brand-version">버전 1.47.0</p>
+              <p className="brand-version">버전 1.48.0</p>
           <p className="brand-copy">
             재고, 판매, 고객, 초기데이터 가져오기, 백업, 공개 견적 관리까지 한 화면 흐름으로 이어서 사용할 수 있습니다.
           </p>

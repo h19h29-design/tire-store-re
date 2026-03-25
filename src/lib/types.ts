@@ -175,6 +175,7 @@ export type InventorySearchFilters = {
   brandName: string
   patternName: string
   sizeLabel: string
+  receivedDate: string
   stockMode: 'all' | 'in-stock' | 'out-of-stock'
 }
 
@@ -186,9 +187,9 @@ export type InventoryFilterOptions = {
 
 export type StockEntryInput = {
   itemId: number
-  movementType: 'receive' | 'adjustment-increase' | 'adjustment-decrease'
   quantity: number
   unitCost: number
+  occurredAt: string
   memo: string
 }
 

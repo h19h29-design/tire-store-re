@@ -15,6 +15,7 @@ import type {
 void runTransaction
 
 type BalanceRow = {
+  quantityOnHand: number
   quantityAvailable: number
 }
 
@@ -54,8 +55,16 @@ const defaultFilters: InventorySearchFilters = {
   brandName: '',
   patternName: '',
   sizeLabel: '',
+  receivedDate: '',
   stockMode: 'all',
 }
+
+const latestReceivedAtSql = `(
+  SELECT MAX(inventory_movements.occurred_at)
+  FROM inventory_movements
+  WHERE inventory_movements.item_id = items.id
+    AND inventory_movements.quantity > 0
+)`
 
 const normalizedProductSql = `LOWER(
   REPLACE(
@@ -96,6 +105,16 @@ function normalizeDiscountRate(value: number) {
   }
 
   return Math.max(0, Math.min(100, Math.round(value * 100) / 100))
+}
+
+function normalizeOccurredAtDate(value: string) {
+  const trimmed = value.trim()
+  return /^\d{4}-\d{2}-\d{2}$/.test(trimmed) ? trimmed : getCurrentSeoulDateTimeValue().slice(0, 10)
+}
+
+function buildOccurredAtValue(dateValue: string) {
+  const currentTime = getCurrentSeoulDateTimeValue().slice(11, 19)
+  return `${normalizeOccurredAtDate(dateValue)} ${currentTime}`
 }
 
 async function ensureInventorySchema() {
@@ -171,6 +190,8 @@ export async function searchInventoryItems(
     mergedFilters.patternName,
     mergedFilters.sizeLabel,
     mergedFilters.sizeLabel,
+    mergedFilters.receivedDate,
+    mergedFilters.receivedDate,
     mergedFilters.stockMode,
     mergedFilters.stockMode,
     mergedFilters.stockMode,
@@ -249,12 +270,7 @@ export async function searchInventoryItems(
       COALESCE(items.default_discount_rate, 0) AS defaultDiscountRate,
       COALESCE(inventory_balance_cache.quantity_on_hand, 0) AS quantityOnHand,
       COALESCE(inventory_balance_cache.quantity_available, 0) AS quantityAvailable,
-      (
-        SELECT MAX(inventory_movements.occurred_at)
-        FROM inventory_movements
-        WHERE inventory_movements.item_id = items.id
-          AND inventory_movements.quantity > 0
-      ) AS latestReceivedAt,
+      ${latestReceivedAtSql} AS latestReceivedAt,
       COALESCE(items.public_quote_enabled, 0) AS publicQuoteEnabled,
       COALESCE(items.public_quote_url, '') AS publicQuoteUrl
     FROM items
@@ -264,6 +280,7 @@ export async function searchInventoryItems(
       AND (? = '' OR items.normalized_brand = ?)
       AND (? = '' OR items.pattern_name = ?)
       AND (? = '' OR items.size_label = ?)
+      AND (? = '' OR DATE(${latestReceivedAtSql}) = ?)
       AND (
         ? = 'all'
         OR (? = 'in-stock' AND COALESCE(inventory_balance_cache.quantity_available, 0) > 0)
@@ -353,70 +370,92 @@ export async function getInventoryOverview(): Promise<InventoryOverview> {
 
 export async function saveStockEntry(input: StockEntryInput) {
   await ensureInventorySchema()
-  const quantity = Number(input.quantity)
-  if (!Number.isFinite(quantity) || quantity <= 0) {
-    throw new Error('재고 수량은 1개 이상으로 입력해 주세요.')
+  const targetQuantity = Math.max(0, Math.floor(Number(input.quantity) || 0))
+  if (!Number.isFinite(targetQuantity) || targetQuantity < 0) {
+    throw new Error('재고 수량은 0개 이상으로 입력해 주세요.')
   }
 
-  const signedQuantity =
-    input.movementType === 'adjustment-decrease'
-      ? -quantity
-      : quantity
-
   const balanceRow = await selectFirst<BalanceRow>(
-    `SELECT quantity_available AS quantityAvailable
+    `SELECT
+      quantity_on_hand AS quantityOnHand,
+      quantity_available AS quantityAvailable
     FROM inventory_balance_cache
     WHERE item_id = ?`,
     [input.itemId],
   )
 
+  const currentQuantityOnHand = Math.max(0, Number(balanceRow?.quantityOnHand ?? 0))
   const currentAvailable = Number(balanceRow?.quantityAvailable ?? 0)
+  const signedQuantity = targetQuantity - currentQuantityOnHand
   if (currentAvailable + signedQuantity < 0) {
-    throw new Error('현재 재고보다 많이 차감할 수는 없습니다.')
+    throw new Error('현재 사용 가능한 재고보다 적게 맞출 수는 없습니다.')
   }
 
-  const movementType =
-    input.movementType === 'receive'
-      ? 'receive'
-      : 'adjustment'
-  const occurredAt = getCurrentSeoulDateTimeValue()
+  const occurredAt = buildOccurredAtValue(input.occurredAt)
+  const movementType = signedQuantity >= 0 ? 'receive' : 'adjustment'
 
-  await execute(
-    `INSERT INTO inventory_movements (
-      item_id,
-      movement_type,
-      quantity,
-      unit_cost,
-      unit_price,
-      occurred_at,
-      reference_type,
-      reference_id,
-      memo
-    ) VALUES (?, ?, ?, ?, 0, ?, 'manual', NULL, ?)`,
-    [
-      input.itemId,
-      movementType,
-      signedQuantity,
-      Math.max(0, input.unitCost),
-      occurredAt,
-      input.memo.trim(),
-    ],
-  )
+  if (signedQuantity !== 0) {
+    await execute(
+      `INSERT INTO inventory_movements (
+        item_id,
+        movement_type,
+        quantity,
+        unit_cost,
+        unit_price,
+        occurred_at,
+        reference_type,
+        reference_id,
+        memo
+      ) VALUES (?, ?, ?, ?, 0, ?, 'manual', NULL, ?)`,
+      [
+        input.itemId,
+        movementType,
+        signedQuantity,
+        Math.max(0, input.unitCost),
+        occurredAt,
+        input.memo.trim(),
+      ],
+    )
 
-  await execute(
-    `INSERT INTO inventory_balance_cache (
-      item_id,
-      quantity_on_hand,
-      quantity_reserved,
-      quantity_available,
-      updated_at
-    ) VALUES (?, ?, 0, ?, CURRENT_TIMESTAMP)
-    ON CONFLICT(item_id) DO UPDATE SET
-      quantity_on_hand = quantity_on_hand + excluded.quantity_on_hand,
-      quantity_available = quantity_available + excluded.quantity_available,
-      updated_at = CURRENT_TIMESTAMP`,
-    [input.itemId, signedQuantity, signedQuantity],
-  )
+    await execute(
+      `INSERT INTO inventory_balance_cache (
+        item_id,
+        quantity_on_hand,
+        quantity_reserved,
+        quantity_available,
+        updated_at
+      ) VALUES (?, ?, 0, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(item_id) DO UPDATE SET
+        quantity_on_hand = quantity_on_hand + excluded.quantity_on_hand,
+        quantity_available = quantity_available + excluded.quantity_available,
+        updated_at = CURRENT_TIMESTAMP`,
+      [input.itemId, signedQuantity, signedQuantity],
+    )
+  } else {
+    await execute(
+      `UPDATE inventory_movements
+      SET
+        occurred_at = ?,
+        unit_cost = CASE WHEN ? > 0 THEN ? ELSE unit_cost END,
+        memo = CASE WHEN ? <> '' THEN ? ELSE memo END
+      WHERE id = (
+        SELECT id
+        FROM inventory_movements
+        WHERE item_id = ?
+          AND quantity > 0
+        ORDER BY occurred_at DESC, id DESC
+        LIMIT 1
+      )`,
+      [
+        occurredAt,
+        Math.max(0, input.unitCost),
+        Math.max(0, input.unitCost),
+        input.memo.trim(),
+        input.memo.trim(),
+        input.itemId,
+      ],
+    )
+  }
 
   if (input.unitCost > 0) {
     await execute(
@@ -444,7 +483,12 @@ export async function saveStockEntry(input: StockEntryInput) {
         ?
       FROM items
       WHERE id = ?`,
-      [Math.max(0, input.unitCost), occurredAt, '재고 입력에서 원가 갱신', input.itemId],
+      [
+        Math.max(0, input.unitCost),
+        occurredAt,
+        signedQuantity === 0 ? '재고 날짜/원가 수정에서 원가 갱신' : '재고 입력에서 원가 갱신',
+        input.itemId,
+      ],
     )
   }
 }
@@ -541,12 +585,7 @@ export async function getInventoryItemById(itemId: number): Promise<InventoryLis
       COALESCE(items.default_discount_rate, 0) AS defaultDiscountRate,
       COALESCE(inventory_balance_cache.quantity_on_hand, 0) AS quantityOnHand,
       COALESCE(inventory_balance_cache.quantity_available, 0) AS quantityAvailable,
-      (
-        SELECT MAX(inventory_movements.occurred_at)
-        FROM inventory_movements
-        WHERE inventory_movements.item_id = items.id
-          AND inventory_movements.quantity > 0
-      ) AS latestReceivedAt,
+      ${latestReceivedAtSql} AS latestReceivedAt,
       COALESCE(items.public_quote_enabled, 0) AS publicQuoteEnabled,
       COALESCE(items.public_quote_url, '') AS publicQuoteUrl
     FROM items
@@ -590,12 +629,7 @@ export async function listPublicQuoteCatalogItems(): Promise<PublicQuoteCatalogI
       COALESCE(items.default_discount_rate, 0) AS defaultDiscountRate,
       COALESCE(inventory_balance_cache.quantity_on_hand, 0) AS quantityOnHand,
       COALESCE(inventory_balance_cache.quantity_available, 0) AS quantityAvailable,
-      (
-        SELECT MAX(inventory_movements.occurred_at)
-        FROM inventory_movements
-        WHERE inventory_movements.item_id = items.id
-          AND inventory_movements.quantity > 0
-      ) AS latestReceivedAt,
+      ${latestReceivedAtSql} AS latestReceivedAt,
       COALESCE(items.public_quote_enabled, 0) AS publicQuoteEnabled,
       COALESCE(items.public_quote_url, '') AS publicQuoteUrl,
       COALESCE(GROUP_CONCAT(item_aliases.alias_value, ' '), '') AS aliasesText

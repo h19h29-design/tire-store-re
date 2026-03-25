@@ -9,6 +9,8 @@ export type SaleDraftLine = InventoryListRow & {
   unitPrice: number
   lineTotalOverride?: number | null
   maxEditableQuantity?: number
+  persistedItemId?: number | null
+  inventoryLinked?: boolean
 }
 
 export type SaveSaleInput = {
@@ -142,6 +144,38 @@ function normalizeServiceDescription(value: string) {
   return /^-+$/.test(trimmed) ? '' : trimmed
 }
 
+function getPersistedItemId(line: SaleDraftLine) {
+  const candidate = Number(line.persistedItemId ?? line.id)
+  return Number.isInteger(candidate) && candidate > 0 ? candidate : null
+}
+
+function isInventoryLinkedLine(line: SaleDraftLine) {
+  return line.inventoryLinked !== false && getPersistedItemId(line) !== null
+}
+
+function splitSnapshotName(snapshotName: string) {
+  const trimmed = snapshotName.trim()
+  if (!trimmed) {
+    return {
+      brandName: '연결 끊긴 품목',
+      patternName: '',
+    }
+  }
+
+  const parts = trimmed.split(/\s+/).filter(Boolean)
+  if (parts.length <= 1) {
+    return {
+      brandName: '연결 끊긴 품목',
+      patternName: trimmed,
+    }
+  }
+
+  return {
+    brandName: parts.shift() ?? '연결 끊긴 품목',
+    patternName: parts.join(' '),
+  }
+}
+
 function isAlignmentDescription(value: string) {
   const normalized = normalizeText(value)
   return normalized.includes('alignment') || normalized.includes(normalizeText('얼라이'))
@@ -207,7 +241,8 @@ async function insertSaleContents(input: {
     const lineTotal = line.lineTotalOverride ?? line.unitPrice * line.quantity
     const unitPrice =
       line.quantity > 0 ? Math.max(0, Math.round(lineTotal / line.quantity)) : Math.max(0, line.unitPrice)
-    const costPriceSnapshot = input.costPriceSnapshots.get(line.id) ?? null
+    const persistedItemId = getPersistedItemId(line)
+    const costPriceSnapshot = persistedItemId ? input.costPriceSnapshots.get(persistedItemId) ?? null : null
 
     await execute(
       `INSERT INTO sale_lines (
@@ -224,7 +259,7 @@ async function insertSaleContents(input: {
       ) VALUES (?, 'tire', ?, ?, ?, ?, ?, ?, ?, '')`,
       [
         input.saleId,
-        line.id,
+        persistedItemId,
         `${line.brandName} ${line.patternName}`.trim(),
         line.sizeLabel,
         costPriceSnapshot,
@@ -234,7 +269,7 @@ async function insertSaleContents(input: {
       ],
     )
 
-    if (applyInventoryEffect) {
+    if (applyInventoryEffect && persistedItemId) {
       await execute(
         `INSERT INTO inventory_movements (
           item_id,
@@ -248,7 +283,7 @@ async function insertSaleContents(input: {
           memo
         ) VALUES (?, 'sale', ?, 0, ?, ?, 'sale', ?, ?)`,
         [
-          line.id,
+          persistedItemId,
           -line.quantity,
           unitPrice,
           input.soldAt,
@@ -264,7 +299,7 @@ async function insertSaleContents(input: {
           quantity_available = quantity_available - ?,
           updated_at = CURRENT_TIMESTAMP
         WHERE item_id = ?`,
-        [line.quantity, line.quantity, line.id],
+        [line.quantity, line.quantity, persistedItemId],
       )
     }
   }
@@ -532,31 +567,35 @@ export async function loadSaleForEdit(saleId: number): Promise<SaleEditDraft> {
   for (const row of lineRows) {
     if (row.lineType === 'tire') {
       const itemId = Number(row.itemId ?? 0)
-      if (itemId <= 0 || !row.brandName || !row.patternName) {
-        throw new Error('삭제되었거나 연결이 끊긴 타이어 품목이 있어 판매 수정을 진행할 수 없습니다.')
-      }
-
       const quantity = Math.max(0, Number(row.quantity ?? 0))
       const currentQuantityAvailable = Math.max(0, Number(row.quantityAvailable ?? 0))
       const currentQuantityOnHand = Math.max(0, Number(row.quantityOnHand ?? row.quantityAvailable ?? 0))
-      const maxEditableQuantity = saleAdjustsInventory
-        ? currentQuantityAvailable + quantity
-        : Math.max(currentQuantityAvailable, quantity)
-      const quantityOnHand = saleAdjustsInventory
-        ? currentQuantityOnHand + quantity
-        : Math.max(currentQuantityOnHand, quantity)
+      const isLinkedInventoryItem = itemId > 0 && Boolean(row.brandName) && Boolean(row.patternName)
+      const snapshotIdentity = splitSnapshotName(row.itemSnapshotName)
+      const maxEditableQuantity = isLinkedInventoryItem
+        ? saleAdjustsInventory
+          ? currentQuantityAvailable + quantity
+          : Math.max(currentQuantityAvailable, quantity)
+        : Math.max(quantity, 999)
+      const quantityOnHand = isLinkedInventoryItem
+        ? saleAdjustsInventory
+          ? currentQuantityOnHand + quantity
+          : Math.max(currentQuantityOnHand, quantity)
+        : quantity
       lines.push({
-        id: itemId,
-        skuCode: row.skuCode ?? String(itemId),
-        brandName: row.brandName,
-        patternName: row.patternName,
+        id: isLinkedInventoryItem ? itemId : -(lines.length + 1),
+        persistedItemId: isLinkedInventoryItem ? itemId : null,
+        inventoryLinked: isLinkedInventoryItem,
+        skuCode: row.skuCode ?? (isLinkedInventoryItem ? String(itemId) : `archived-${saleId}-${lines.length + 1}`),
+        brandName: row.brandName ?? snapshotIdentity.brandName,
+        patternName: row.patternName ?? snapshotIdentity.patternName,
         sizeLabel: row.sizeLabel || row.sizeSnapshot || '',
-        productName: row.productName ?? '',
+        productName: row.productName ?? (isLinkedInventoryItem ? '' : '연결이 끊긴 기존 판매 품목'),
         defaultCostPrice: Math.max(0, Number(row.defaultCostPrice ?? 0)),
         defaultSalePrice: Math.max(0, Number(row.unitPrice ?? row.defaultSalePrice ?? 0)),
         defaultDiscountRate: Math.max(0, Number(row.defaultDiscountRate ?? 0)),
         quantityOnHand,
-        quantityAvailable: currentQuantityAvailable,
+        quantityAvailable: isLinkedInventoryItem ? currentQuantityAvailable : quantity,
         latestReceivedAt: null,
         publicQuoteEnabled: Boolean(Number(row.publicQuoteEnabled ?? 0)),
         publicQuoteUrl: row.publicQuoteUrl ?? '',
@@ -723,7 +762,13 @@ export async function deleteSale(saleId: number) {
 }
 
 async function loadCostPriceSnapshots(lines: SaleDraftLine[]) {
-  const itemIds = Array.from(new Set(lines.map((line) => Number(line.id)).filter((itemId) => itemId > 0)))
+  const itemIds = Array.from(
+    new Set(
+      lines
+        .map((line) => getPersistedItemId(line))
+        .filter((itemId): itemId is number => typeof itemId === 'number' && itemId > 0),
+    ),
+  )
   if (itemIds.length === 0) {
     return new Map<number, number>()
   }
@@ -792,17 +837,23 @@ async function insertServiceEntry(input: {
 
 async function validateLineQuantities(lines: SaleDraftLine[], availableAdjustments = new Map<number, number>()) {
   for (const line of lines) {
+    const persistedItemId = getPersistedItemId(line)
+    if (line.quantity <= 0) {
+      throw new Error('수량은 1개 이상이어야 합니다.')
+    }
+    if (!persistedItemId || !isInventoryLinkedLine(line)) {
+      continue
+    }
+
     const balanceRow = await selectFirst<BalanceRow>(
       `SELECT quantity_available AS quantityAvailable
       FROM inventory_balance_cache
       WHERE item_id = ?`,
-      [line.id],
+      [persistedItemId],
     )
 
-    const available = Number(balanceRow?.quantityAvailable ?? 0) + Number(availableAdjustments.get(line.id) ?? 0)
-    if (line.quantity <= 0) {
-      throw new Error('수량은 1개 이상이어야 합니다.')
-    }
+    const available =
+      Number(balanceRow?.quantityAvailable ?? 0) + Number(availableAdjustments.get(persistedItemId) ?? 0)
     if (line.quantity > available) {
       throw new Error(`${line.sizeLabel} / ${line.patternName} 재고가 부족합니다.`)
     }

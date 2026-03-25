@@ -2865,9 +2865,16 @@ fn detect_customer_sheet_layout(values: &[String]) -> Option<CustomerSheetLayout
 }
 
 fn parse_legacy_customer_row(row_number: usize, values: &[String]) -> Option<CustomerSeedRecord> {
-    let phone = sanitize_phone(&values[1]);
-    let vehicle_model = sanitize_text_cell(&values[2]);
-    let plate_number = sanitize_plate_cell(&values[3]);
+    let primary_phone = sanitize_phone(&values[2]);
+    let secondary_phone = sanitize_phone(&values[1]);
+    let phone = if !primary_phone.is_empty() {
+        primary_phone
+    } else {
+        secondary_phone
+    };
+    let vehicle_model = sanitize_text_cell(&values[3]);
+    let plate_number = sanitize_plate_cell(&values[4]);
+    let odometer = parse_odometer(&values[1]).max(parse_odometer(&values[0]));
     let memo = combine_text_cells(&[values[11].as_str(), values[12].as_str()]);
 
     build_customer_seed(
@@ -2876,7 +2883,7 @@ fn parse_legacy_customer_row(row_number: usize, values: &[String]) -> Option<Cus
         &phone,
         &vehicle_model,
         &plate_number,
-        0,
+        odometer,
         &memo,
     )
 }
@@ -2889,15 +2896,18 @@ fn parse_current_customer_row(row_number: usize, values: &[String]) -> Option<Cu
     } else {
         secondary_phone
     };
-    let name = if phone.is_empty() {
-        let primary_name = sanitize_name_cell(&values[1]);
-        if !primary_name.is_empty() {
-            primary_name
-        } else {
-            sanitize_name_cell(&values[2])
-        }
+    let primary_name = if parse_odometer(&values[1]) > 0 {
+        String::new()
     } else {
         sanitize_name_cell(&values[1])
+    };
+    let secondary_name = sanitize_name_cell(&values[2]);
+    let name = if !primary_name.is_empty() {
+        primary_name
+    } else if phone.is_empty() {
+        secondary_name
+    } else {
+        String::new()
     };
     let vehicle_model = sanitize_text_cell(&values[3]);
     let plate_number = sanitize_plate_cell(&values[4]);

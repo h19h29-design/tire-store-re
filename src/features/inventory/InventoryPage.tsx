@@ -8,14 +8,13 @@ import {
   showValidationDialog,
   type FieldValidationMap,
 } from '../../lib/dialogs'
-import { formatMoney } from '../../lib/normalize'
+import { formatMoney, getCurrentSeoulDateTimeValue } from '../../lib/normalize'
 import type {
   InventoryCreateItemInput,
   InventoryFilterOptions,
   InventoryListRow,
   InventoryOverview,
   InventorySearchFilters,
-  StockEntryInput,
 } from '../../lib/types'
 import {
   createInventoryItem,
@@ -42,13 +41,18 @@ const defaultFilters: InventorySearchFilters = {
   brandName: '',
   patternName: '',
   sizeLabel: '',
+  receivedDate: '',
   stockMode: 'all',
 }
 
+function getTodayDateValue() {
+  return getCurrentSeoulDateTimeValue().slice(0, 10)
+}
+
 const defaultEntryForm = {
-  movementType: 'receive' as StockEntryInput['movementType'],
-  quantity: '4',
+  quantity: '0',
   unitCost: '',
+  occurredAt: getTodayDateValue(),
   memo: '',
   brandName: '',
   patternName: '',
@@ -133,6 +137,7 @@ function createEntryFormFromItem(item: InventoryListRow) {
   return {
     ...defaultEntryForm,
     quantity: String(currentQuantity),
+    occurredAt: getTodayDateValue(),
     brandName: item.brandName,
     patternName: item.patternName,
     sizeLabel: item.sizeLabel,
@@ -161,21 +166,6 @@ function createUpdatedInventoryItem(item: InventoryListRow, form: typeof default
     defaultDiscountRate: Math.max(0, Number(form.discountRate || item.defaultDiscountRate || 0)),
     publicQuoteEnabled: form.publicQuoteEnabled,
     publicQuoteUrl: form.publicQuoteUrl.trim(),
-  }
-}
-
-function applyMovementToItemQuantity(
-  item: InventoryListRow,
-  movementType: StockEntryInput['movementType'],
-  quantity: number,
-) {
-  const nextDelta =
-    movementType === 'adjustment-decrease' ? -Math.abs(quantity) : Math.abs(quantity)
-
-  return {
-    ...item,
-    quantityOnHand: Math.max(0, item.quantityOnHand + nextDelta),
-    quantityAvailable: Math.max(0, item.quantityAvailable + nextDelta),
   }
 }
 
@@ -249,6 +239,8 @@ export function InventoryPage() {
   const [priorityItemId, setPriorityItemId] = useState<number | null>(null)
   const deferredQuery = useDeferredValue(filters.query)
   const refreshSequenceRef = useRef(0)
+  const sidePanelRef = useRef<HTMLElement | null>(null)
+  const receivedDateInputRef = useRef<HTMLInputElement | null>(null)
   const selectedItemId = selectedItem?.id ?? null
 
   const refreshInventory = useCallback(async (
@@ -284,8 +276,8 @@ export function InventoryPage() {
     if (nextSelectedItem) {
       setEntryForm((current) => ({
         ...createEntryFormFromItem(nextSelectedItem),
-        movementType: current.movementType,
         memo: current.memo,
+        occurredAt: current.occurredAt || getTodayDateValue(),
       }))
     } else {
       setEntryForm(defaultEntryForm)
@@ -410,7 +402,7 @@ export function InventoryPage() {
     delete activeFieldErrors['inventory-query']
   }
 
-  if (Number.isFinite(currentQuantity) && currentQuantity > 0) {
+  if (Number.isFinite(currentQuantity) && currentQuantity >= 0) {
     delete activeFieldErrors['inventory-quantity']
   }
 
@@ -448,8 +440,8 @@ export function InventoryPage() {
     const quantity = Number(entryForm.quantity)
     const issues: string[] = []
 
-    if (!Number.isFinite(quantity) || quantity <= 0) {
-      const message = '재고 수량은 1개 이상으로 입력해 주세요.'
+    if (!Number.isFinite(quantity) || quantity < 0) {
+      const message = '재고 수량은 0개 이상으로 입력해 주세요.'
       issues.push(message)
       nextFieldErrors['inventory-quantity'] = message
       fieldOrder.push('inventory-quantity')
@@ -475,11 +467,12 @@ export function InventoryPage() {
 
     try {
       setSaving(true)
-      const predictedSelectedItem = applyMovementToItemQuantity(
-        createUpdatedInventoryItem(selectedItem, entryForm),
-        entryForm.movementType,
-        quantity,
-      )
+      const predictedSelectedItem = {
+        ...createUpdatedInventoryItem(selectedItem, entryForm),
+        quantityOnHand: Math.max(0, Math.floor(quantity || 0)),
+        quantityAvailable: Math.max(0, Math.floor(quantity || 0)),
+        latestReceivedAt: `${entryForm.occurredAt || getTodayDateValue()} 00:00:00`,
+      }
       const nextDefaultCostPrice =
         entryForm.unitCost.trim() === '' ? selectedItem.defaultCostPrice : parseAmount(entryForm.unitCost)
       const nextFiltersAfterCatalogChange = adjustFiltersForCatalogChange(filters, selectedItem, {
@@ -489,9 +482,9 @@ export function InventoryPage() {
       })
       await saveStockEntry({
         itemId: selectedItem.id,
-        movementType: entryForm.movementType,
         quantity,
         unitCost: parseAmount(entryForm.unitCost),
+        occurredAt: entryForm.occurredAt,
         memo: entryForm.memo,
       })
 
@@ -521,11 +514,11 @@ export function InventoryPage() {
         updatedSelectedItem,
       )
       setOptions(await getInventoryFilterOptions())
-      setEntryForm((current) => ({
-        ...current,
-        movementType: defaultEntryForm.movementType,
+      setEntryForm({
+        ...createEntryFormFromItem(updatedSelectedItem),
         memo: defaultEntryForm.memo,
-      }))
+        occurredAt: defaultEntryForm.occurredAt,
+      })
       setFieldErrors({})
       setStatus('재고 입력이 완료되었습니다. 현재고와 할인율이 반영되었습니다.')
       await showMessageDialog('재고와 품목 설정이 저장되었습니다.', {
@@ -780,6 +773,15 @@ export function InventoryPage() {
             </label>
 
             <label className="field">
+              <span>입고일</span>
+              <input
+                onChange={(event) => updateFilter('receivedDate', event.target.value)}
+                type="date"
+                value={filters.receivedDate}
+              />
+            </label>
+
+            <label className="field">
               <span>재고 상태</span>
               <select
                 className="field-select"
@@ -838,6 +840,12 @@ export function InventoryPage() {
                           setPriorityItemId(null)
                           setSelectedItem(item)
                           setEntryForm(createEntryFormFromItem(item))
+                          requestAnimationFrame(() => {
+                            sidePanelRef.current?.scrollIntoView({
+                              behavior: 'smooth',
+                              block: 'start',
+                            })
+                          })
                         }} type="button">
                           선택
                         </button>
@@ -862,7 +870,7 @@ export function InventoryPage() {
           </div>
         </article>
 
-        <article className="panel inventory-side-panel">
+        <article className="panel inventory-side-panel" ref={sidePanelRef}>
           <h3>재고 입력 / 신규 품목 등록</h3>
           {selectedItem ? (
             <>
@@ -921,30 +929,12 @@ export function InventoryPage() {
                   />
                 </label>
 
-                <label className="field">
-                  <span>입력 유형</span>
-                  <select
-                    className="field-select"
-                    onChange={(event) =>
-                      setEntryForm((current) => ({
-                        ...current,
-                        movementType: event.target.value as StockEntryInput['movementType'],
-                      }))
-                    }
-                    value={entryForm.movementType}
-                  >
-                    <option value="receive">입고</option>
-                    <option value="adjustment-increase">재고조정(+)</option>
-                    <option value="adjustment-decrease">재고조정(-)</option>
-                  </select>
-                </label>
-
                 <label className={`field${activeFieldErrors['inventory-quantity'] ? ' has-error' : ''}`}>
-                  <span>수량</span>
+                  <span>현재 재고</span>
                   <input
                     aria-invalid={Boolean(activeFieldErrors['inventory-quantity'])}
                     data-field-error-target="inventory-quantity"
-                    min={1}
+                    min={0}
                     onChange={(event) =>
                       setEntryForm((current) => ({
                         ...current,
@@ -956,7 +946,9 @@ export function InventoryPage() {
                   />
                   {activeFieldErrors['inventory-quantity'] ? (
                     <small className="field-error-text">{activeFieldErrors['inventory-quantity']}</small>
-                  ) : null}
+                  ) : (
+                    <small className="field-hint">사용자가 계산한 최종 재고 수량을 그대로 입력합니다.</small>
+                  )}
                 </label>
 
                 <label className={`field${activeFieldErrors['inventory-unit-cost'] ? ' has-error' : ''}`}>
@@ -980,6 +972,43 @@ export function InventoryPage() {
                   ) : (
                     <small className="field-hint">{getAmountFieldPreview(entryForm.unitCost)}</small>
                   )}
+                </label>
+
+                <label className="field">
+                  <span>반영 날짜</span>
+                  <div className="inline-field">
+                    <input
+                      onChange={(event) =>
+                        setEntryForm((current) => ({
+                          ...current,
+                          occurredAt: event.target.value,
+                        }))
+                      }
+                      ref={receivedDateInputRef}
+                      type="date"
+                      value={entryForm.occurredAt}
+                    />
+                    <button
+                      className="secondary-button"
+                      onClick={() => {
+                        const input = receivedDateInputRef.current
+                        if (!input) {
+                          return
+                        }
+
+                        if (typeof input.showPicker === 'function') {
+                          input.showPicker()
+                          return
+                        }
+
+                        input.focus()
+                        input.click()
+                      }}
+                      type="button"
+                    >
+                      날짜 수정
+                    </button>
+                  </div>
                 </label>
 
                 <label className="field">
