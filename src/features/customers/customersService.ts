@@ -16,6 +16,19 @@ const defaultFilters: CustomerSearchFilters = {
 }
 
 const legacyVehiclePlateSql = "REPLACE(REPLACE(TRIM(COALESCE(vehicles.model_name, '')), ' ', ''), '-', '')"
+const legacyVehiclePlateValueSql = "REPLACE(REPLACE(TRIM(COALESCE(model_name, '')), ' ', ''), '-', '')"
+
+type VehicleEditContextRow = {
+  id: number
+  customerId: number | null
+  plateNumber: string
+  normalizedPlateNumber: string
+  brandName: string
+  modelName: string
+  odometer: number
+  memo: string
+  legacyPlateKey: string
+}
 
 const latestSaleLineSummaryExpression = `TRIM(
   CASE
@@ -224,6 +237,54 @@ async function loadCustomerVehicleRecord(vehicleId: number) {
   return rows[0] ?? null
 }
 
+async function loadVehicleEditContext(vehicleId: number) {
+  return selectFirst<VehicleEditContextRow>(
+    `SELECT
+      id,
+      customer_id AS customerId,
+      COALESCE(plate_number, '') AS plateNumber,
+      COALESCE(normalized_plate_number, '') AS normalizedPlateNumber,
+      COALESCE(brand_name, '') AS brandName,
+      COALESCE(model_name, '') AS modelName,
+      COALESCE(odometer, 0) AS odometer,
+      COALESCE(memo, '') AS memo,
+      CASE
+        WHEN COALESCE(normalized_plate_number, '') = ''
+          AND LENGTH(${legacyVehiclePlateValueSql}) BETWEEN 7 AND 8
+          AND ${legacyVehiclePlateValueSql} GLOB '*[0-9]*'
+          THEN ${legacyVehiclePlateValueSql}
+        ELSE ''
+      END AS legacyPlateKey
+    FROM vehicles
+    WHERE id = ?
+    LIMIT 1`,
+    [vehicleId],
+  )
+}
+
+async function loadLinkedVehicleIds(canonicalPlate: string, fallbackVehicleId: number) {
+  if (!canonicalPlate) {
+    return [fallbackVehicleId]
+  }
+
+  const rows = await selectRows<{ id: number }>(
+    `SELECT id
+    FROM vehicles
+    WHERE normalized_plate_number = ?
+      OR (
+        COALESCE(normalized_plate_number, '') = ''
+        AND LENGTH(${legacyVehiclePlateValueSql}) BETWEEN 7 AND 8
+        AND ${legacyVehiclePlateValueSql} GLOB '*[0-9]*'
+        AND ${legacyVehiclePlateValueSql} = ?
+      )
+    ORDER BY id ASC`,
+    [canonicalPlate, canonicalPlate],
+  )
+
+  const uniqueIds = [...new Set(rows.map((row) => Number(row.id)).filter((id) => Number.isInteger(id) && id > 0))]
+  return uniqueIds.length > 0 ? uniqueIds : [fallbackVehicleId]
+}
+
 export async function searchCustomers(filters: Partial<CustomerSearchFilters> = {}) {
   const mergedFilters = { ...defaultFilters, ...filters }
   const rawQuery = mergedFilters.query.trim()
@@ -255,16 +316,28 @@ export async function searchCustomers(filters: Partial<CustomerSearchFilters> = 
 }
 
 export async function updateCustomerVehicleRecord(input: CustomerRecordUpdateInput): Promise<CustomerListRow> {
+  const currentVehicle = await loadVehicleEditContext(input.vehicleId)
+  if (!currentVehicle) {
+    throw new Error('수정할 차량 정보를 찾지 못했습니다.')
+  }
+
   const customerName = input.customerName.trim()
   const phone = input.phone.trim()
   const normalizedPhone = normalizePhone(phone)
   const plateNumber = input.plateNumber.trim()
   const normalizedPlateNumber = normalizePlate(plateNumber)
   const vehicleBrand = input.vehicleBrand.trim()
-  const normalizedVehicleBrand = normalizeText(vehicleBrand)
   const vehicleModel = input.vehicleModel.trim()
   const odometer = Math.max(0, Math.floor(Number(input.odometer) || 0))
   const memo = input.memo.trim()
+  const resolvedPlateNumber = plateNumber || currentVehicle.plateNumber
+  const resolvedNormalizedPlateNumber =
+    normalizedPlateNumber || currentVehicle.normalizedPlateNumber || currentVehicle.legacyPlateKey
+  const resolvedVehicleBrand = vehicleBrand || currentVehicle.brandName
+  const resolvedNormalizedVehicleBrand = normalizeText(resolvedVehicleBrand)
+  const resolvedVehicleModel = vehicleModel || currentVehicle.modelName
+  const resolvedOdometer = odometer > 0 ? odometer : Math.max(0, Number(currentVehicle.odometer ?? 0))
+  const resolvedMemo = memo || currentVehicle.memo
 
   let customerId = Number(input.customerId ?? 0)
   if (!Number.isInteger(customerId) || customerId <= 0) {
@@ -305,6 +378,14 @@ export async function updateCustomerVehicleRecord(input: CustomerRecordUpdateInp
     customerId = Number(insertResult.lastInsertId)
   }
 
+  const resolvedCustomerId =
+    customerId > 0
+      ? customerId
+      : Number.isInteger(currentVehicle.customerId) && Number(currentVehicle.customerId) > 0
+        ? Number(currentVehicle.customerId)
+        : null
+  const linkedVehicleIds = await loadLinkedVehicleIds(resolvedNormalizedPlateNumber, input.vehicleId)
+  const vehiclePlaceholderSql = linkedVehicleIds.map(() => '?').join(', ')
   await execute(
     `UPDATE vehicles
     SET
@@ -317,17 +398,17 @@ export async function updateCustomerVehicleRecord(input: CustomerRecordUpdateInp
       odometer = ?,
       memo = ?,
       updated_at = CURRENT_TIMESTAMP
-    WHERE id = ?`,
+    WHERE id IN (${vehiclePlaceholderSql})`,
     [
-      customerId > 0 ? customerId : null,
-      plateNumber,
-      normalizedPlateNumber,
-      vehicleBrand,
-      normalizedVehicleBrand,
-      vehicleModel,
-      odometer,
-      memo,
-      input.vehicleId,
+      resolvedCustomerId,
+      resolvedPlateNumber,
+      resolvedNormalizedPlateNumber,
+      resolvedVehicleBrand,
+      resolvedNormalizedVehicleBrand,
+      resolvedVehicleModel,
+      resolvedOdometer,
+      resolvedMemo,
+      ...linkedVehicleIds,
     ],
   )
 

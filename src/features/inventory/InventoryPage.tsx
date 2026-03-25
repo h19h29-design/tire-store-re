@@ -2,6 +2,7 @@ import { useCallback, useDeferredValue, useEffect, useRef, useState } from 'reac
 import {
   findFirstInvalidField,
   focusFieldErrorTarget,
+  showConfirmDialog,
   showErrorDialog,
   showMessageDialog,
   showValidationDialog,
@@ -128,7 +129,7 @@ function isEditableElement(target: EventTarget | null) {
 }
 
 function createEntryFormFromItem(item: InventoryListRow) {
-  const currentQuantity = Math.max(0, item.quantityAvailable)
+  const currentQuantity = Math.max(0, item.quantityOnHand)
   return {
     ...defaultEntryForm,
     quantity: String(currentQuantity),
@@ -140,6 +141,14 @@ function createEntryFormFromItem(item: InventoryListRow) {
     publicQuoteEnabled: item.publicQuoteEnabled,
     publicQuoteUrl: item.publicQuoteUrl || '',
   }
+}
+
+function formatReceivedDate(value: string | null) {
+  if (!value) {
+    return '-'
+  }
+
+  return value.slice(0, 10)
 }
 
 function createUpdatedInventoryItem(item: InventoryListRow, form: typeof defaultEntryForm) {
@@ -502,6 +511,7 @@ export function InventoryPage() {
       setPriorityItemId(selectedItem.id)
       setItems((current) => current.map((item) => (item.id === updatedSelectedItem.id ? updatedSelectedItem : item)))
       setSelectedItem(updatedSelectedItem)
+      setEntryForm(createEntryFormFromItem(updatedSelectedItem))
       await refreshInventory(
         nextFiltersAfterCatalogChange.changed
           ? { ...nextFiltersAfterCatalogChange.filters, query: deferredQuery }
@@ -563,6 +573,7 @@ export function InventoryPage() {
       setPriorityItemId(selectedItem.id)
       setItems((current) => current.map((item) => (item.id === updatedSelectedItem.id ? updatedSelectedItem : item)))
       setSelectedItem(updatedSelectedItem)
+      setEntryForm(createEntryFormFromItem(updatedSelectedItem))
       await refreshInventory(
         nextFiltersAfterCatalogChange.changed
           ? { ...nextFiltersAfterCatalogChange.filters, query: deferredQuery }
@@ -644,7 +655,11 @@ export function InventoryPage() {
   }
 
   async function handleDeleteItem(item: InventoryListRow) {
-    if (typeof window !== 'undefined' && !window.confirm(`${item.brandName} ${item.patternName} ${item.sizeLabel} 품목을 삭제할까요?`)) {
+    const confirmed = await showConfirmDialog(`${item.brandName} ${item.patternName} ${item.sizeLabel} 품목을 삭제할까요?`, {
+      title: '품목 삭제',
+      kind: 'warning',
+    })
+    if (!confirmed) {
       return
     }
 
@@ -797,6 +812,7 @@ export function InventoryPage() {
                   <th>브랜드</th>
                   <th>패턴</th>
                   <th>규격</th>
+                  <th>입고일</th>
                   <th>현재고</th>
                   <th>할인율</th>
                   <th />
@@ -808,6 +824,7 @@ export function InventoryPage() {
                     <td>{item.brandName}</td>
                     <td>{item.patternName}</td>
                     <td>{item.sizeLabel}</td>
+                    <td>{formatReceivedDate(item.latestReceivedAt)}</td>
                     <td>
                       <span className={`stock-badge ${getStockBadgeClass(item.quantityAvailable, lowStockThreshold)}`}>
                         {getStockBadgeLabel(item.quantityAvailable, lowStockThreshold)}
@@ -835,7 +852,7 @@ export function InventoryPage() {
                 ))}
                 {items.length === 0 ? (
                   <tr>
-                    <td className="empty-cell" colSpan={6}>
+                    <td className="empty-cell" colSpan={7}>
                       표시할 재고가 없습니다.
                     </td>
                   </tr>
@@ -858,6 +875,7 @@ export function InventoryPage() {
                   <span className={`stock-badge ${getStockBadgeClass(selectedItem.quantityAvailable, lowStockThreshold)}`}>
                     {getStockBadgeLabel(selectedItem.quantityAvailable, lowStockThreshold)}
                   </span>
+                  <span>입고일 {formatReceivedDate(selectedItem.latestReceivedAt)}</span>
                   <span>할인율 {Number(entryForm.discountRate || 0)}%</span>
                   <span>{entryForm.publicQuoteEnabled ? '공개 견적 노출' : '공개 견적 비노출'}</span>
                 </div>

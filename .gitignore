@@ -16,6 +16,7 @@ dist-ssr
 output/
 test-results/
 tire-store.db
+!src-tauri/resources/tire-store.db
 *.db-shm
 *.db-wal
 tmp-*.db

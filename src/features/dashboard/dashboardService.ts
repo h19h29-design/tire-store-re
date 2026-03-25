@@ -783,6 +783,7 @@ export async function loadDashboardAnalytics(rangeMode: DashboardRangeMode, valu
   await ensureDashboardSchema()
 
   const todayValue = getTodayValue()
+  const focusDateValue = rangeMode === 'date' ? value : todayValue
   const lowStockThresholdResult = await loadDashboardPart(
     '저재고 기준',
     () => loadLowStockThresholdSetting(),
@@ -792,7 +793,7 @@ export async function loadDashboardAnalytics(rangeMode: DashboardRangeMode, valu
 
   const [todayResult, periodResult, inventoryResult, brandRowsResult, sizeRowsResult, lowStockItemsResult, periodBucketsResult, recentSalesResult] =
     await Promise.all([
-      loadDashboardPart('오늘 요약', () => loadSummary('date', todayValue), createEmptySummary),
+      loadDashboardPart('기준일 요약', () => loadSummary('date', focusDateValue), createEmptySummary),
       loadDashboardPart('기간 요약', () => loadSummary(rangeMode, value), createEmptySummary),
       loadDashboardPart(
         '재고 지표',
@@ -807,7 +808,7 @@ export async function loadDashboardAnalytics(rangeMode: DashboardRangeMode, valu
     ])
   const headlineResult = await loadDashboardPart(
     '상단 누계',
-    () => loadHeadlineMetrics(todayValue, todayResult.value),
+    () => loadHeadlineMetrics(focusDateValue, todayResult.value),
     createEmptyHeadlineMetrics,
   )
 

@@ -167,6 +167,10 @@ function getBucketColumnLabel(rangeMode: DashboardRangeMode) {
   }
 }
 
+function getHeadlineBaseDate(filters: DashboardAppliedFilters) {
+  return filters.rangeMode === 'date' ? filters.dateValue : getTodayValue()
+}
+
 function buildMonthValue(year: string, month: string) {
   return `${year}-${month.padStart(2, '0')}`
 }
@@ -594,9 +598,9 @@ export function DashboardPage() {
     }
   }
 
-  const todaySummary = analytics?.today
+  const focusSummary = analytics?.today
   const periodSummary = analytics?.period
-  const todaySelectedPaymentAmount = getSelectedPaymentAmount(todaySummary ?? null, paymentFilters)
+  const todaySelectedPaymentAmount = getSelectedPaymentAmount(focusSummary ?? null, paymentFilters)
   const periodSelectedPaymentAmount = getSelectedPaymentAmount(periodSummary ?? null, paymentFilters)
   const selectedPaymentLabel = getSelectedPaymentLabel(paymentFilters)
   const validation = analytics?.validation
@@ -605,6 +609,10 @@ export function DashboardPage() {
   const selectedMonthYear = getMonthYearPart(monthValue)
   const selectedMonthNumber = getMonthNumberPart(monthValue)
   const appliedRangeMode = appliedFilters.rangeMode
+  const headlineBaseDate = getHeadlineBaseDate(appliedFilters)
+  const focusExpenseRow = appliedRangeMode === 'date' ? expenseHistory[0] ?? null : null
+  const focusExpenseNote = focusExpenseRow?.note.trim() ? focusExpenseRow.note.trim() : '등록된 지출 메모가 없습니다.'
+  const focusExpenseUpdatedAt = focusExpenseRow?.updatedAt ? focusExpenseRow.updatedAt.replace('T', ' ').slice(0, 16) : '-'
 
   if (expenseDate) {
     delete activeFieldErrors['dashboard-expense-date']
@@ -629,7 +637,7 @@ export function DashboardPage() {
           <p className="eyebrow">대시보드</p>
           <h2>대시보드</h2>
           <p className="page-copy">
-            오늘 판매 요약, 카드수수료가 반영된 수익, 재고 현황, 기간별 판매량을 한 화면에서 확인할 수 있게
+            조회 기준일 판매 요약, 카드수수료가 반영된 수익, 재고 현황, 기간별 판매량을 한 화면에서 확인할 수 있게
             정리했습니다.
           </p>
         </div>
@@ -645,7 +653,7 @@ export function DashboardPage() {
             </strong>
           </article>
           <article className="dashboard-headline-card">
-            <p className="dashboard-headline-label">당일판매</p>
+            <p className="dashboard-headline-label">{appliedRangeMode === 'date' ? '기준일판매' : '당일판매'}</p>
             <strong className="dashboard-headline-value">
               {(analytics?.headline.todayQuantity ?? 0).toLocaleString('ko-KR')}
             </strong>
@@ -663,7 +671,7 @@ export function DashboardPage() {
             </strong>
           </article>
           <article className="dashboard-headline-card">
-            <p className="dashboard-headline-label">당일수익</p>
+            <p className="dashboard-headline-label">{appliedRangeMode === 'date' ? '기준일수익' : '당일수익'}</p>
             <strong className="dashboard-headline-value dashboard-headline-value-profit">
               {formatMoney(analytics?.headline.todayProfit ?? 0)}원
             </strong>
@@ -680,19 +688,19 @@ export function DashboardPage() {
       <section className="panel hero-panel">
         <div className="hero-header">
           <div>
-            <p className="eyebrow">오늘</p>
-            <h3>오늘 판매 요약</h3>
+            <p className="eyebrow">{appliedRangeMode === 'date' ? '조회 기준일' : '오늘'}</p>
+            <h3>{appliedRangeMode === 'date' ? `${headlineBaseDate} 판매 요약` : '오늘 판매 요약'}</h3>
             <p style={{ margin: '0.5rem 0 0', color: 'var(--muted)' }}>
-              순이익 = 타이어 매출 + 작업비 - 타이어 원가 - 카드수수료 - 일일 지출
+              순이익 = 타이어 매출 + 작업비 - 할인적용 원가 - 카드수수료 - 일일 지출
             </p>
           </div>
-          <strong className="hero-amount">{formatMoney(todaySummary?.netProfit ?? 0)}원</strong>
+          <strong className="hero-amount">{formatMoney(focusSummary?.netProfit ?? 0)}원</strong>
         </div>
 
         <div className="stat-grid">
           <article className="stat-card">
             <p className="stat-label">총 매출</p>
-            <strong className="stat-value small-value">{formatMoney(todaySummary?.totalAmount ?? 0)}원</strong>
+            <strong className="stat-value small-value">{formatMoney(focusSummary?.totalAmount ?? 0)}원</strong>
           </article>
           <article className="stat-card">
             <p className="stat-label">선택 결제 매출</p>
@@ -701,31 +709,57 @@ export function DashboardPage() {
           <article className="stat-card">
             <p className="stat-label">판매 건수 / 수량</p>
             <strong className="stat-value small-value">
-              {(todaySummary?.salesCount ?? 0).toLocaleString('ko-KR')}건 / {(todaySummary?.tireQuantity ?? 0).toLocaleString('ko-KR')}본
+              {(focusSummary?.salesCount ?? 0).toLocaleString('ko-KR')}건 / {(focusSummary?.tireQuantity ?? 0).toLocaleString('ko-KR')}본
             </strong>
           </article>
           <article className="stat-card">
             <p className="stat-label">타이어 매출</p>
-            <strong className="stat-value small-value">{formatMoney(todaySummary?.tireSalesAmount ?? 0)}원</strong>
+            <strong className="stat-value small-value">{formatMoney(focusSummary?.tireSalesAmount ?? 0)}원</strong>
           </article>
           <article className="stat-card">
             <p className="stat-label">타이어 원가</p>
-            <strong className="stat-value small-value">{formatMoney(todaySummary?.tireCostAmount ?? 0)}원</strong>
+            <strong className="stat-value small-value">{formatMoney(focusSummary?.tireCostAmount ?? 0)}원</strong>
           </article>
           <article className="stat-card">
             <p className="stat-label">카드수수료 / 지출</p>
             <strong className="stat-value small-value">
-              {formatMoney(todaySummary?.cardFeeAmount ?? 0)}원 / {formatMoney(todaySummary?.expenseAmount ?? 0)}원
+              {formatMoney(focusSummary?.cardFeeAmount ?? 0)}원 / {formatMoney(focusSummary?.expenseAmount ?? 0)}원
             </strong>
           </article>
           <article className="stat-card">
             <p className="stat-label">작업비 / 타이어 수익</p>
             <strong className="stat-value small-value">
-              {formatMoney(todaySummary?.serviceAmount ?? 0)}원 / {formatMoney(todaySummary?.tireProfit ?? 0)}원
+              {formatMoney(focusSummary?.serviceAmount ?? 0)}원 / {formatMoney(focusSummary?.tireProfit ?? 0)}원
             </strong>
           </article>
         </div>
       </section>
+
+      {appliedRangeMode === 'date' ? (
+        <section className="panel">
+          <div className="hero-header">
+            <div>
+              <p className="eyebrow">지출내역</p>
+              <h3>{headlineBaseDate} 지출내역</h3>
+              <p style={{ margin: '0.5rem 0 0', color: 'var(--muted)' }}>
+                카드수수료를 제외한 실제 일일 지출만 표시합니다.
+              </p>
+            </div>
+            <strong className="hero-amount">{formatMoney(focusExpenseRow?.amount ?? 0)}원</strong>
+          </div>
+
+          <div className="stat-grid compact-stat-grid">
+            <article className="stat-card">
+              <p className="stat-label">지출 메모</p>
+              <strong className="stat-value small-value">{focusExpenseNote}</strong>
+            </article>
+            <article className="stat-card">
+              <p className="stat-label">마지막 수정</p>
+              <strong className="stat-value small-value">{focusExpenseUpdatedAt}</strong>
+            </article>
+          </div>
+        </section>
+      ) : null}
 
       <section className="panel">
         <div className="filter-grid dashboard-filter-grid">

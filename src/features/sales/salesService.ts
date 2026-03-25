@@ -107,6 +107,29 @@ type SaleQuantityRow = {
 let salesSchemaPromise: Promise<void> | null = null
 const normalizedLegacyPlateSql = "REPLACE(REPLACE(TRIM(COALESCE(model_name, '')), ' ', ''), '-', '')"
 
+async function loadLinkedVehicleIdsByPlate(normalizedPlate: string, fallbackVehicleId: number) {
+  if (!normalizedPlate) {
+    return [fallbackVehicleId]
+  }
+
+  const rows = await selectRows<IdRow>(
+    `SELECT id
+    FROM vehicles
+    WHERE normalized_plate_number = ?
+      OR (
+        COALESCE(normalized_plate_number, '') = ''
+        AND LENGTH(${normalizedLegacyPlateSql}) BETWEEN 7 AND 8
+        AND ${normalizedLegacyPlateSql} GLOB '*[0-9]*'
+        AND ${normalizedLegacyPlateSql} = ?
+      )
+    ORDER BY id ASC`,
+    [normalizedPlate, normalizedPlate],
+  )
+
+  const uniqueIds = [...new Set(rows.map((row) => Number(row.id)).filter((id) => Number.isInteger(id) && id > 0))]
+  return uniqueIds.length > 0 ? uniqueIds : [fallbackVehicleId]
+}
+
 function toSafeWholeNumber(value: number) {
   if (!Number.isFinite(value)) {
     return 0
@@ -534,6 +557,7 @@ export async function loadSaleForEdit(saleId: number): Promise<SaleEditDraft> {
         defaultDiscountRate: Math.max(0, Number(row.defaultDiscountRate ?? 0)),
         quantityOnHand,
         quantityAvailable: currentQuantityAvailable,
+        latestReceivedAt: null,
         publicQuoteEnabled: Boolean(Number(row.publicQuoteEnabled ?? 0)),
         publicQuoteUrl: row.publicQuoteUrl ?? '',
         quantity,
@@ -836,6 +860,8 @@ async function ensureVehicle(
       [normalizedPlate, normalizedPlate],
     )
     if (existingVehicle) {
+      const linkedVehicleIds = await loadLinkedVehicleIdsByPlate(normalizedPlate, Number(existingVehicle.id))
+      const vehiclePlaceholderSql = linkedVehicleIds.map(() => '?').join(', ')
       await execute(
         `UPDATE vehicles
         SET
@@ -847,7 +873,7 @@ async function ensureVehicle(
           model_name = CASE WHEN ? <> '' THEN ? ELSE model_name END,
           odometer = CASE WHEN ? > 0 THEN ? ELSE odometer END,
           updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?`,
+        WHERE id IN (${vehiclePlaceholderSql})`,
         [
           customerId,
           plateNumber.trim(),
@@ -862,7 +888,7 @@ async function ensureVehicle(
           vehicleModel,
           odometer,
           odometer,
-          existingVehicle.id,
+          ...linkedVehicleIds,
         ],
       )
       return Number(existingVehicle.id)

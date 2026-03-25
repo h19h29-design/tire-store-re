@@ -241,7 +241,7 @@ export function CustomersPage() {
                 <th>차량번호 / 고객명</th>
                 <th>연락처</th>
                 <th>교체 날짜</th>
-                <th>키로수</th>
+                <th>주행거리(키로수)</th>
                 <th>최근 판매 내역</th>
                 <th>판매수량</th>
                 <th>매출금액</th>
@@ -298,7 +298,7 @@ export function CustomersPage() {
               <p>{selectedRow.latestTireSummary || '최근 판매 내역 없음'}</p>
               <div className="selected-item-meta">
                 <span>최근 교체 {formatReplacementDate(selectedRow.latestSaleAt)}</span>
-                <span>키로수 {formatOdometer(selectedRow.odometer)}</span>
+                <span>주행거리(키로수) {formatOdometer(selectedRow.odometer)}</span>
                 <span>얼라이먼트 {formatMoney(selectedRow.alignmentAmount)}원</span>
               </div>
             </div>
@@ -370,7 +370,7 @@ export function CustomersPage() {
               </label>
 
               <label className="field">
-                <span>키로수</span>
+                <span>주행거리(키로수)</span>
                 <input
                   inputMode="numeric"
                   onChange={(event) =>
@@ -418,7 +418,7 @@ export function CustomersPage() {
         ) : (
           <div className="empty-state-box">
             <strong>목록에서 차량을 선택해 주세요.</strong>
-            <p>고객명, 연락처, 차량번호, 브랜드, 차종, 키로수, 메모를 바로 수정할 수 있습니다.</p>
+            <p>고객명, 연락처, 차량번호, 브랜드, 차종, 주행거리(키로수), 메모를 바로 수정할 수 있습니다.</p>
           </div>
         )}
       </section>

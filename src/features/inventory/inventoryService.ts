@@ -249,6 +249,12 @@ export async function searchInventoryItems(
       COALESCE(items.default_discount_rate, 0) AS defaultDiscountRate,
       COALESCE(inventory_balance_cache.quantity_on_hand, 0) AS quantityOnHand,
       COALESCE(inventory_balance_cache.quantity_available, 0) AS quantityAvailable,
+      (
+        SELECT MAX(inventory_movements.occurred_at)
+        FROM inventory_movements
+        WHERE inventory_movements.item_id = items.id
+          AND inventory_movements.quantity > 0
+      ) AS latestReceivedAt,
       COALESCE(items.public_quote_enabled, 0) AS publicQuoteEnabled,
       COALESCE(items.public_quote_url, '') AS publicQuoteUrl
     FROM items
@@ -535,6 +541,12 @@ export async function getInventoryItemById(itemId: number): Promise<InventoryLis
       COALESCE(items.default_discount_rate, 0) AS defaultDiscountRate,
       COALESCE(inventory_balance_cache.quantity_on_hand, 0) AS quantityOnHand,
       COALESCE(inventory_balance_cache.quantity_available, 0) AS quantityAvailable,
+      (
+        SELECT MAX(inventory_movements.occurred_at)
+        FROM inventory_movements
+        WHERE inventory_movements.item_id = items.id
+          AND inventory_movements.quantity > 0
+      ) AS latestReceivedAt,
       COALESCE(items.public_quote_enabled, 0) AS publicQuoteEnabled,
       COALESCE(items.public_quote_url, '') AS publicQuoteUrl
     FROM items
@@ -578,6 +590,12 @@ export async function listPublicQuoteCatalogItems(): Promise<PublicQuoteCatalogI
       COALESCE(items.default_discount_rate, 0) AS defaultDiscountRate,
       COALESCE(inventory_balance_cache.quantity_on_hand, 0) AS quantityOnHand,
       COALESCE(inventory_balance_cache.quantity_available, 0) AS quantityAvailable,
+      (
+        SELECT MAX(inventory_movements.occurred_at)
+        FROM inventory_movements
+        WHERE inventory_movements.item_id = items.id
+          AND inventory_movements.quantity > 0
+      ) AS latestReceivedAt,
       COALESCE(items.public_quote_enabled, 0) AS publicQuoteEnabled,
       COALESCE(items.public_quote_url, '') AS publicQuoteUrl,
       COALESCE(GROUP_CONCAT(item_aliases.alias_value, ' '), '') AS aliasesText

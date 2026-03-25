@@ -159,6 +159,7 @@ export type InventoryListRow = {
   defaultDiscountRate: number
   quantityOnHand: number
   quantityAvailable: number
+  latestReceivedAt: string | null
   publicQuoteEnabled: boolean
   publicQuoteUrl: string
 }

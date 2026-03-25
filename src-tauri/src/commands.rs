@@ -2499,6 +2499,33 @@ fn copy_database_file(app: &AppHandle, destination: &Path) -> Result<(), String>
     Ok(())
 }
 
+pub fn seed_runtime_database(app: &AppHandle) -> Result<(), String> {
+    let db_path = database_path(app)?;
+    if db_path.exists() {
+        return Ok(());
+    }
+
+    if let Some(parent) = db_path.parent() {
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+
+    let resource_dir = match app.path().resource_dir() {
+        Ok(path) => path,
+        Err(_) => return Ok(()),
+    };
+
+    let candidate_paths = [
+        resource_dir.join("resources").join("tire-store.db"),
+        resource_dir.join("tire-store.db"),
+    ];
+
+    if let Some(seed_path) = candidate_paths.iter().find(|path| path.exists()) {
+        fs::copy(seed_path, &db_path).map_err(|error| error.to_string())?;
+    }
+
+    Ok(())
+}
+
 fn database_path(app: &AppHandle) -> Result<PathBuf, String> {
     let mut path = app
         .path()
