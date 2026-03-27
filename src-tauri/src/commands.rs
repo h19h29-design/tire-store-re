@@ -304,6 +304,10 @@ pub async fn ensure_runtime_ready(app: AppHandle) -> Result<RuntimeReadyResult, 
     remove_card_fee_daily_expenses(&pool).await;
     let daily_expense_backfilled_count =
         backfill_missing_daily_expenses_from_detected_sales_workbook(&app, &pool).await;
+    let _ = repair_daily_expense_note_currency_suffixes(&pool).await;
+    let _ = repair_imported_customer_contacts(&pool).await;
+    let _ = clear_improbable_vehicle_odometers(&pool).await;
+    let _ = repair_detected_inventory_customer_data(&app, &pool).await;
 
     Ok(RuntimeReadyResult {
         sale_line_cost_snapshot_column_ready: true,
@@ -562,7 +566,8 @@ fn parse_sales_workbook_impl(path: &str) -> Result<ParsedSalesWorkbook, String> 
             let mut reported_card_amount = 0i64;
             let mut reported_cash_amount = 0i64;
             let mut expense_amount = 0i64;
-            let mut expense_notes = Vec::<String>::new();
+            let mut expense_details = BTreeMap::<String, i64>::new();
+            let mut in_expense_section = false;
             let mut removed_summary_row_number = None;
 
             for (index, row) in range.rows().enumerate().skip(2) {
@@ -581,6 +586,21 @@ fn parse_sales_workbook_impl(path: &str) -> Result<ParsedSalesWorkbook, String> 
                 let mut total_amount = parse_money_thousand_won(&raw_total_amount);
                 let card_amount = parse_money_thousand_won(&raw_card_amount);
                 let mut cash_amount = parse_money_thousand_won(&raw_cash_amount);
+                let expense_label = cell_string(row.get(23));
+                let expense_value = cell_string(row.get(24));
+
+                if is_daily_expense_section_label(&expense_label) {
+                    in_expense_section = true;
+                } else if in_expense_section && is_daily_expense_section_total_label(&expense_label) {
+                    in_expense_section = false;
+                } else if in_expense_section {
+                    if let Some((note, amount)) =
+                        parse_daily_expense_sidebar_row(&expense_label, &expense_value)
+                    {
+                        expense_amount += amount;
+                        *expense_details.entry(note).or_insert(0) += amount;
+                    }
+                }
 
                 if is_day_summary_row(
                     &phone,
@@ -633,10 +653,8 @@ fn parse_sales_workbook_impl(path: &str) -> Result<ParsedSalesWorkbook, String> 
                         al_amount.max(0) + card_amount.max(0) + cash_amount.max(0);
                     if next_expense_amount > 0 {
                         expense_amount += next_expense_amount;
-                        if !next_note.is_empty()
-                            && !expense_notes.iter().any(|note| note == &next_note)
-                        {
-                            expense_notes.push(next_note);
+                        if !next_note.is_empty() {
+                            *expense_details.entry(next_note).or_insert(0) += next_expense_amount;
                         }
                     }
                     continue;
@@ -737,7 +755,7 @@ fn parse_sales_workbook_impl(path: &str) -> Result<ParsedSalesWorkbook, String> 
                 reported_cash_amount,
                 cash_delta: parsed_cash_amount - reported_cash_amount,
                 expense_amount,
-                expense_note: expense_notes.join(", "),
+                expense_note: format_daily_expense_note(&expense_details),
                 removed_summary_row_number,
             });
         }
@@ -1833,6 +1851,255 @@ async fn remove_card_fee_daily_expenses(pool: &SqlitePool) -> i64 {
   .unwrap_or(0)
 }
 
+async fn repair_daily_expense_note_currency_suffixes(pool: &SqlitePool) -> i64 {
+    sqlx::query(
+        r#"
+        UPDATE daily_expenses
+        SET
+          note = REPLACE(note, '?', '원'),
+          updated_at = CURRENT_TIMESTAMP
+        WHERE note LIKE '%?%'
+        "#,
+    )
+    .execute(pool)
+    .await
+    .map(|result| result.rows_affected() as i64)
+    .unwrap_or(0)
+}
+
+async fn repair_imported_customer_contacts(pool: &SqlitePool) -> i64 {
+    let rows = sqlx::query(
+        r#"
+        SELECT id, COALESCE(phone, '') AS phone, COALESCE(normalized_phone, '') AS normalized_phone
+        FROM customers
+        "#,
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+
+    let mut repaired_count = 0i64;
+
+    for row in rows {
+        let customer_id = row.get::<i64, _>("id");
+        let current_phone = row.get::<String, _>("phone");
+        let current_normalized_phone = row.get::<String, _>("normalized_phone");
+        let next_normalized_phone = normalize_import_phone(&current_phone);
+        let fallback_normalized_phone = normalize_import_phone(&current_normalized_phone);
+        let repaired_normalized_phone = if next_normalized_phone.len() >= 8 {
+            next_normalized_phone
+        } else {
+            fallback_normalized_phone
+        };
+
+        if repaired_normalized_phone.is_empty()
+            || repaired_normalized_phone == current_normalized_phone
+                && current_phone == format_phone_display(&repaired_normalized_phone)
+        {
+            continue;
+        }
+
+        let repaired_phone = format_phone_display(&repaired_normalized_phone);
+        let result = sqlx::query(
+            r#"
+            UPDATE customers
+            SET
+              phone = ?,
+              normalized_phone = ?,
+              updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            "#,
+        )
+        .bind(repaired_phone)
+        .bind(repaired_normalized_phone)
+        .bind(customer_id)
+        .execute(pool)
+        .await;
+
+        if let Ok(result) = result {
+            repaired_count += result.rows_affected() as i64;
+        }
+    }
+
+    repaired_count
+}
+
+async fn clear_improbable_vehicle_odometers(pool: &SqlitePool) -> i64 {
+    sqlx::query(
+        r#"
+        UPDATE vehicles
+        SET
+          odometer = 0,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE COALESCE(odometer, 0) > 9999999
+        "#,
+    )
+    .execute(pool)
+    .await
+    .map(|result| result.rows_affected() as i64)
+    .unwrap_or(0)
+}
+
+async fn repair_detected_inventory_customer_data(app: &AppHandle, pool: &SqlitePool) -> i64 {
+    let Some(inventory_path) = detect_import_files_internal(app).inventory_path else {
+        return 0;
+    };
+
+    let Ok(parsed_inventory) = parse_inventory_workbook_impl(&inventory_path) else {
+        return 0;
+    };
+
+    let mut repaired_count = 0i64;
+
+    for seed in parsed_inventory.customer_seeds {
+        if seed.normalized_plate_number.is_empty() && seed.normalized_phone.is_empty() {
+            continue;
+        }
+
+        if !seed.normalized_plate_number.is_empty() {
+            let vehicle_row = sqlx::query(
+                r#"
+                SELECT id, customer_id, COALESCE(odometer, 0) AS odometer
+                FROM vehicles
+                WHERE normalized_plate_number = ?
+                ORDER BY id DESC
+                LIMIT 1
+                "#,
+            )
+            .bind(&seed.normalized_plate_number)
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten();
+
+        if let Some(vehicle_row) = vehicle_row {
+                let vehicle_id = vehicle_row.get::<i64, _>("id");
+                let current_odometer = vehicle_row.get::<i64, _>("odometer");
+                let customer_id = vehicle_row.try_get::<Option<i64>, _>("customer_id").ok().flatten();
+
+                if should_replace_odometer(current_odometer, seed.odometer) {
+                    let result = sqlx::query(
+                        r#"
+                        UPDATE vehicles
+                        SET odometer = ?, updated_at = CURRENT_TIMESTAMP
+                        WHERE id = ?
+                        "#,
+                    )
+                    .bind(seed.odometer)
+                    .bind(vehicle_id)
+                    .execute(pool)
+                    .await;
+
+                    if let Ok(result) = result {
+                        repaired_count += result.rows_affected() as i64;
+                    }
+                }
+
+                if let Some(customer_id) = customer_id {
+                    repaired_count += repair_customer_phone_from_seed(pool, customer_id, &seed).await;
+                }
+            }
+        }
+
+        if !seed.normalized_phone.is_empty() {
+            let result = sqlx::query(
+                r#"
+                UPDATE customers
+                SET
+                  phone = CASE
+                    WHEN TRIM(COALESCE(phone, '')) = ''
+                      OR (
+                        LENGTH(REPLACE(TRIM(COALESCE(phone, '')), '-', '')) = 10
+                        AND REPLACE(TRIM(COALESCE(phone, '')), '-', '') LIKE '10%'
+                      )
+                    THEN ?
+                    ELSE phone
+                  END,
+                  normalized_phone = CASE
+                    WHEN TRIM(COALESCE(normalized_phone, '')) = ''
+                      OR (
+                        LENGTH(TRIM(COALESCE(normalized_phone, ''))) = 10
+                        AND TRIM(COALESCE(normalized_phone, '')) LIKE '10%'
+                      )
+                    THEN ?
+                    ELSE normalized_phone
+                  END,
+                  updated_at = CURRENT_TIMESTAMP
+                WHERE normalized_phone IN (?, ?)
+                "#,
+            )
+            .bind(&seed.phone)
+            .bind(&seed.normalized_phone)
+            .bind(&seed.normalized_phone)
+            .bind(seed.normalized_phone.trim_start_matches('0'))
+            .execute(pool)
+            .await;
+
+            if let Ok(result) = result {
+                repaired_count += result.rows_affected() as i64;
+            }
+        }
+    }
+
+    repaired_count
+}
+
+async fn repair_customer_phone_from_seed(
+    pool: &SqlitePool,
+    customer_id: i64,
+    seed: &CustomerSeedRecord,
+) -> i64 {
+    if seed.normalized_phone.is_empty() {
+        return 0;
+    }
+
+    sqlx::query(
+        r#"
+        UPDATE customers
+        SET
+          phone = CASE
+            WHEN TRIM(COALESCE(phone, '')) = ''
+              OR (
+                LENGTH(REPLACE(TRIM(COALESCE(phone, '')), '-', '')) = 10
+                AND REPLACE(TRIM(COALESCE(phone, '')), '-', '') LIKE '10%'
+              )
+            THEN ?
+            ELSE phone
+          END,
+          normalized_phone = CASE
+            WHEN TRIM(COALESCE(normalized_phone, '')) = ''
+              OR (
+                LENGTH(TRIM(COALESCE(normalized_phone, ''))) = 10
+                AND TRIM(COALESCE(normalized_phone, '')) LIKE '10%'
+              )
+            THEN ?
+            ELSE normalized_phone
+          END,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        "#,
+    )
+    .bind(&seed.phone)
+    .bind(&seed.normalized_phone)
+    .bind(customer_id)
+    .execute(pool)
+    .await
+    .map(|result| result.rows_affected() as i64)
+    .unwrap_or(0)
+}
+
+fn should_replace_odometer(current: i64, candidate: i64) -> bool {
+    if candidate <= 0 {
+        return false;
+    }
+
+    if current <= 0 || current > 9_999_999 {
+        return true;
+    }
+
+    candidate > current
+}
+
 async fn insert_inventory_item(
     tx: &mut Transaction<'_, sqlx::Sqlite>,
     item: &InventorySeedItem,
@@ -2680,15 +2947,16 @@ fn parse_customer_sheet_sales(range: &Range<Data>) -> Vec<ParsedSaleRow> {
             continue;
         }
 
-        let first_aux = sanitize_text_cell(&values[1]);
-        let phone = sanitize_phone(&values[2]);
-        let vehicle_model = sanitize_text_cell(&values[3]);
-        let plate_number = sanitize_plate_cell(&values[4]);
-        let pattern = sanitize_text_cell(&values[5]);
-        let size = normalize_size_value(&cell_string(row.get(6)));
-        let quantity = parse_number(&cell_string(row.get(7)));
-        let al_amount = parse_money_thousand_won(&cell_string(row.get(8)));
-        let mut total_amount = parse_money_thousand_won(&cell_string(row.get(10)));
+        let offset = infer_customer_sheet_offset(&values);
+        let first_aux = sanitize_text_cell(value_at(&values, offset));
+        let phone = pick_customer_sheet_phone(&values, offset);
+        let vehicle_model = sanitize_text_cell(value_at(&values, offset + 2));
+        let plate_number = sanitize_plate_cell(value_at(&values, offset + 3));
+        let pattern = sanitize_text_cell(value_at(&values, offset + 4));
+        let size = normalize_size_value(value_at(&values, offset + 5));
+        let quantity = parse_number(value_at(&values, offset + 6));
+        let al_amount = parse_money_thousand_won(value_at(&values, offset + 7));
+        let mut total_amount = parse_money_thousand_won(value_at(&values, offset + 9));
         let trailing_note = combine_text_cells(&[values[11].as_str(), values[12].as_str()]);
         let memo = if !looks_like_odometer_text(&first_aux)
             && !first_aux.is_empty()
@@ -2865,16 +3133,11 @@ fn detect_customer_sheet_layout(values: &[String]) -> Option<CustomerSheetLayout
 }
 
 fn parse_legacy_customer_row(row_number: usize, values: &[String]) -> Option<CustomerSeedRecord> {
-    let primary_phone = sanitize_phone(&values[2]);
-    let secondary_phone = sanitize_phone(&values[1]);
-    let phone = if !primary_phone.is_empty() {
-        primary_phone
-    } else {
-        secondary_phone
-    };
-    let vehicle_model = sanitize_text_cell(&values[3]);
-    let plate_number = sanitize_plate_cell(&values[4]);
-    let odometer = parse_odometer(&values[1]).max(parse_odometer(&values[0]));
+    let offset = infer_customer_sheet_offset(values);
+    let phone = pick_customer_sheet_phone(values, offset);
+    let vehicle_model = sanitize_text_cell(value_at(values, offset + 2));
+    let plate_number = sanitize_plate_cell(value_at(values, offset + 3));
+    let odometer = parse_odometer(value_at(values, offset));
     let memo = combine_text_cells(&[values[11].as_str(), values[12].as_str()]);
 
     build_customer_seed(
@@ -2889,29 +3152,12 @@ fn parse_legacy_customer_row(row_number: usize, values: &[String]) -> Option<Cus
 }
 
 fn parse_current_customer_row(row_number: usize, values: &[String]) -> Option<CustomerSeedRecord> {
-    let primary_phone = sanitize_phone(&values[2]);
-    let secondary_phone = sanitize_phone(&values[1]);
-    let phone = if !primary_phone.is_empty() {
-        primary_phone
-    } else {
-        secondary_phone
-    };
-    let primary_name = if parse_odometer(&values[1]) > 0 {
-        String::new()
-    } else {
-        sanitize_name_cell(&values[1])
-    };
-    let secondary_name = sanitize_name_cell(&values[2]);
-    let name = if !primary_name.is_empty() {
-        primary_name
-    } else if phone.is_empty() {
-        secondary_name
-    } else {
-        String::new()
-    };
-    let vehicle_model = sanitize_text_cell(&values[3]);
-    let plate_number = sanitize_plate_cell(&values[4]);
-    let odometer = parse_odometer(&values[1]);
+    let offset = infer_customer_sheet_offset(values);
+    let phone = pick_customer_sheet_phone(values, offset);
+    let name = pick_customer_sheet_name(values, offset, &phone);
+    let vehicle_model = sanitize_text_cell(value_at(values, offset + 2));
+    let plate_number = sanitize_plate_cell(value_at(values, offset + 3));
+    let odometer = parse_odometer(value_at(values, offset));
     let memo = combine_text_cells(&[
         values[10].as_str(),
         values[11].as_str(),
@@ -2965,10 +3211,132 @@ fn build_customer_seed(
     })
 }
 
+fn value_at(values: &[String], index: usize) -> &str {
+    values.get(index).map(String::as_str).unwrap_or("")
+}
+
+fn infer_customer_sheet_offset(values: &[String]) -> usize {
+    let mut best_offset = 0usize;
+    let mut best_score = i64::MIN;
+
+    for offset in 0..=1 {
+        let odometer_score = if parse_odometer(value_at(values, offset)) > 0 {
+            1
+        } else {
+            0
+        };
+        let phone_score = if !sanitize_phone(value_at(values, offset + 1)).is_empty() {
+            2
+        } else {
+            0
+        };
+        let model_score = if !sanitize_text_cell(value_at(values, offset + 2)).is_empty() {
+            1
+        } else {
+            0
+        };
+        let plate_score = if !sanitize_plate_cell(value_at(values, offset + 3)).is_empty() {
+            3
+        } else {
+            0
+        };
+        let date_bonus = if offset == 1 && looks_like_date_label(value_at(values, 0)) {
+            2
+        } else {
+            0
+        };
+        let score = odometer_score + phone_score + model_score + plate_score + date_bonus;
+
+        if score > best_score {
+            best_score = score;
+            best_offset = offset;
+        }
+    }
+
+    best_offset
+}
+
+fn pick_customer_sheet_phone(values: &[String], offset: usize) -> String {
+    let primary = sanitize_phone(value_at(values, offset + 1));
+    if !primary.is_empty() {
+        return primary;
+    }
+
+    sanitize_phone(value_at(values, offset + 2))
+}
+
+fn pick_customer_sheet_name(values: &[String], offset: usize, phone: &str) -> String {
+    let candidate_indexes = if offset == 1 {
+        vec![1usize, 0usize]
+    } else {
+        vec![0usize, 1usize]
+    };
+
+    for index in candidate_indexes {
+        let raw = value_at(values, index);
+        if raw.trim().is_empty()
+            || sanitize_phone(raw) == phone
+            || parse_odometer(raw) > 0
+            || !sanitize_plate_cell(raw).is_empty()
+        {
+            continue;
+        }
+
+        let candidate = sanitize_name_cell(raw);
+        if !candidate.is_empty() {
+            return candidate;
+        }
+    }
+
+    String::new()
+}
+
+fn normalize_import_phone(raw: &str) -> String {
+    let digits = normalize_phone(raw);
+    if digits.len() == 10 && digits.starts_with("10") {
+        format!("0{digits}")
+    } else {
+        digits
+    }
+}
+
+fn format_phone_display(normalized: &str) -> String {
+    if normalized.len() == 11 && normalized.starts_with("010") {
+        format!(
+            "{}-{}-{}",
+            &normalized[0..3],
+            &normalized[3..7],
+            &normalized[7..11]
+        )
+    } else if normalized.len() == 10 && normalized.starts_with("02") {
+        format!(
+            "{}-{}-{}",
+            &normalized[0..2],
+            &normalized[2..6],
+            &normalized[6..10]
+        )
+    } else if normalized.len() == 10 {
+        format!(
+            "{}-{}-{}",
+            &normalized[0..3],
+            &normalized[3..6],
+            &normalized[6..10]
+        )
+    } else {
+        normalized.to_string()
+    }
+}
+
+fn is_probable_phone_digits(digits: &str) -> bool {
+    (digits.len() == 10 && digits.starts_with("10"))
+        || (digits.len() == 11 && digits.starts_with("010"))
+        || (digits.len() >= 9 && digits.starts_with("02"))
+}
+
 fn sanitize_phone(raw: &str) -> String {
-    let normalized = normalize_phone(raw);
+    let normalized = normalize_import_phone(raw);
     if normalized.len() >= 8 {
-        raw.trim().to_string()
+        format_phone_display(&normalized)
     } else {
         String::new()
     }
@@ -3022,6 +3390,66 @@ fn combine_text_cells(parts: &[&str]) -> String {
         .join(" / ")
 }
 
+fn parse_daily_expense_sidebar_row(label: &str, raw_amount: &str) -> Option<(String, i64)> {
+    let note = sanitize_text_cell(label);
+    let normalized_note = normalize_text(&note);
+    if note.is_empty()
+        || is_daily_expense_section_label(&note)
+        || is_daily_expense_section_total_label(&note)
+        || normalized_note.chars().all(|character| character.is_ascii_digit())
+        || normalized_note.parse::<f64>().is_ok()
+    {
+        return None;
+    }
+
+    if is_card_fee_note(&note) {
+        return None;
+    }
+
+    let amount = parse_money_thousand_won(raw_amount);
+    if amount <= 0 {
+        return None;
+    }
+
+    Some((note, amount))
+}
+
+fn is_daily_expense_section_label(label: &str) -> bool {
+    normalize_text(label) == normalize_text("지출내역")
+}
+
+fn is_daily_expense_section_total_label(label: &str) -> bool {
+    normalize_text(label) == normalize_text("누계")
+}
+
+fn format_daily_expense_note(details: &BTreeMap<String, i64>) -> String {
+    details
+        .iter()
+        .filter(|(_, amount)| **amount > 0)
+        .map(|(note, amount)| format!("{note} {}원", format_number_with_commas(*amount)))
+        .collect::<Vec<_>>()
+        .join(" / ")
+}
+
+fn format_number_with_commas(value: i64) -> String {
+    let is_negative = value < 0;
+    let digits = value.abs().to_string();
+    let mut formatted = String::new();
+
+    for (index, ch) in digits.chars().rev().enumerate() {
+        if index > 0 && index % 3 == 0 {
+            formatted.push(',');
+        }
+        formatted.push(ch);
+    }
+
+    let mut result = formatted.chars().rev().collect::<String>();
+    if is_negative {
+        result.insert(0, '-');
+    }
+    result
+}
+
 fn extract_non_sale_amount_note(
     raw_total_amount: &str,
     raw_card_amount: &str,
@@ -3068,8 +3496,13 @@ fn should_import_daily_expense_summary(summary: &ParsedSalesDaySummary) -> bool 
 }
 
 fn parse_odometer(raw: &str) -> i64 {
+    let digits = normalize_phone(raw);
+    if digits.len() >= 8 || is_probable_phone_digits(&digits) || looks_like_date_label(raw) {
+        return 0;
+    }
+
     let value = parse_number(raw);
-    if value >= 1000 {
+    if (1_000..=9_999_999).contains(&value) {
         value
     } else {
         0
@@ -3909,13 +4342,15 @@ fn cell_string(cell: Option<&Data>) -> String {
 mod tests {
     use super::{
         apply_schema, apply_vendor_price_workbook_into_pool,
-        backfill_missing_sale_line_cost_snapshots, classify_line_type, import_into_pool,
-        imported_sale_total, is_card_fee_note, is_non_sale_memo_row, normalize_plate,
-        normalize_size_value, normalize_text, parse_inventory_workbook_impl,
-        parse_money_thousand_won, parse_sales_workbook_impl, should_import_daily_expense_summary,
-        InventorySeedItem, ParsedInventoryWorkbook, ParsedSaleRow, ParsedSalesWorkbook,
-        VendorPriceRow, VendorPriceWorkbookData,
+        backfill_missing_sale_line_cost_snapshots, classify_line_type, format_daily_expense_note,
+        import_into_pool, imported_sale_total, is_card_fee_note, is_non_sale_memo_row,
+        normalize_plate, normalize_size_value, normalize_text, parse_current_customer_row,
+        parse_daily_expense_sidebar_row, parse_inventory_workbook_impl, parse_legacy_customer_row,
+        parse_money_thousand_won, parse_odometer, parse_sales_workbook_impl, sanitize_phone,
+        should_import_daily_expense_summary, InventorySeedItem, ParsedInventoryWorkbook,
+        ParsedSaleRow, ParsedSalesWorkbook, VendorPriceRow, VendorPriceWorkbookData,
     };
+    use std::collections::BTreeMap;
     use sqlx::sqlite::SqliteConnectOptions;
     use sqlx::{Row, SqlitePool};
     use std::fs;
@@ -3928,6 +4363,88 @@ mod tests {
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from(r"C:\Users\h19h2"))
             .join("Downloads")
+    }
+
+    #[test]
+    fn normalizes_missing_leading_zero_phone_numbers_and_odometer_from_customer_rows() {
+        let row = vec![
+            "177776".to_string(),
+            "1037853131".to_string(),
+            "K3".to_string(),
+            "26소1278".to_string(),
+            "H462".to_string(),
+            "215 45 17".to_string(),
+            "2".to_string(),
+            String::new(),
+            String::new(),
+            String::new(),
+            "0".to_string(),
+            "네이버".to_string(),
+            String::new(),
+        ];
+
+        let parsed = parse_current_customer_row(1, &row).expect("current row");
+        assert_eq!(parsed.phone, "010-3785-3131");
+        assert_eq!(parsed.normalized_phone, "01037853131");
+        assert_eq!(parsed.odometer, 177_776);
+        assert_eq!(parsed.plate_number, "26소1278");
+        assert_eq!(parsed.vehicle_model, "K3");
+    }
+
+    #[test]
+    fn detects_shifted_customer_rows_with_inline_dates() {
+        let row = vec![
+            "2024 09 10일".to_string(),
+            "104566".to_string(),
+            "010-7623-3935".to_string(),
+            "카니발".to_string(),
+            "60노3796".to_string(),
+            "HPX(RA43)".to_string(),
+            "235 55 19".to_string(),
+            "4".to_string(),
+            "40".to_string(),
+            "0".to_string(),
+            "636".to_string(),
+            "0".to_string(),
+            String::new(),
+        ];
+
+        let parsed = parse_legacy_customer_row(1, &row).expect("legacy row");
+        assert_eq!(parsed.phone, "010-7623-3935");
+        assert_eq!(parsed.odometer, 104_566);
+        assert_eq!(parsed.plate_number, "60노3796");
+        assert_eq!(parsed.vehicle_model, "카니발");
+    }
+
+    #[test]
+    fn parses_sidebar_daily_expense_rows_and_formats_combined_note() {
+        let mut details = BTreeMap::<String, i64>::new();
+        let first = parse_daily_expense_sidebar_row("식대", "55").expect("expense row");
+        let second = parse_daily_expense_sidebar_row("패드", "30").expect("expense row");
+        let third = parse_daily_expense_sidebar_row("중고", "100").expect("expense row");
+
+        *details.entry(first.0).or_insert(0) += first.1;
+        *details.entry(second.0).or_insert(0) += second.1;
+        *details.entry(third.0).or_insert(0) += third.1;
+
+        assert_eq!(
+            format_daily_expense_note(&details),
+            "식대 55,000원 / 중고 100,000원 / 패드 30,000원"
+        );
+    }
+
+    #[test]
+    fn skips_numeric_sidebar_labels_when_collecting_daily_expenses() {
+        assert!(parse_daily_expense_sidebar_row("820.9", "820.9").is_none());
+        assert!(parse_daily_expense_sidebar_row("17", "17").is_none());
+        assert!(parse_daily_expense_sidebar_row("누계", "185").is_none());
+    }
+
+    #[test]
+    fn does_not_treat_phone_numbers_as_odometer_values() {
+        assert_eq!(sanitize_phone("1038951278"), "010-3895-1278");
+        assert_eq!(parse_odometer("1038951278"), 0);
+        assert_eq!(parse_odometer("177776"), 177_776);
     }
 
     fn find_download_sample_path(keyword: &str) -> Option<PathBuf> {

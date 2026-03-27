@@ -64,6 +64,7 @@ export function CustomersPage() {
   const [saving, setSaving] = useState(false)
   const deferredQuery = useDeferredValue(filters.query)
   const refreshSequenceRef = useRef(0)
+  const editPanelRef = useRef<HTMLElement | null>(null)
   const selectedRowId = selectedRow?.id ?? null
 
   const refreshCustomers = useCallback(async (
@@ -163,6 +164,12 @@ export function CustomersPage() {
   function beginEdit(row: CustomerListRow) {
     setSelectedRow(row)
     setEditForm(createEditForm(row))
+    window.requestAnimationFrame(() => {
+      editPanelRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      })
+    })
     setStatus(`${row.plateNumber || '차량'} 정보를 수정 중입니다.`)
   }
 
@@ -289,7 +296,7 @@ export function CustomersPage() {
         </div>
       </section>
 
-      <section className="panel">
+      <section className="panel" ref={editPanelRef}>
         <h3>고객 / 차량 수정</h3>
         {selectedRow ? (
           <>

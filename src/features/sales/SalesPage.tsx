@@ -321,9 +321,9 @@ export function SalesPage() {
   useEffect(() => {
     let active = true
     const hasLookupQuery =
-      deferredPlateNumber.trim().length >= 2 ||
-      deferredPhone.replace(/\D/g, '').length >= 4 ||
-      deferredCustomerName.trim().length >= 2
+      deferredPlateNumber.trim().length >= 1 ||
+      deferredPhone.replace(/\D/g, '').length >= 1 ||
+      deferredCustomerName.trim().length >= 1
 
     if (!hasLookupQuery) {
       setLookupMatches([])

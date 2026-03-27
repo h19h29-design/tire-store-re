@@ -988,19 +988,21 @@ export async function lookupSaleCustomers(input: {
   const clauses: string[] = []
   const bindValues: string[] = []
 
-  if (normalizedPlate.length >= 2) {
+  if (normalizedPlate.length >= 1) {
     clauses.push(`(vehicles.normalized_plate_number LIKE ? OR ${normalizedLegacyPlateSql} LIKE ?)`)
     bindValues.push(`%${normalizedPlate}%`, `%${normalizedPlate}%`)
   }
 
-  if (normalizedPhone.length >= 4) {
-    clauses.push('customers.normalized_phone LIKE ?')
-    bindValues.push(`%${normalizedPhone}%`)
+  if (normalizedPhone.length >= 1) {
+    clauses.push("(customers.normalized_phone LIKE ? OR REPLACE(COALESCE(customers.phone, ''), '-', '') LIKE ?)")
+    bindValues.push(`%${normalizedPhone}%`, `%${normalizedPhone}%`)
   }
 
-  if (normalizedName.length >= 2) {
-    clauses.push("LOWER(customers.name) LIKE '%' || LOWER(?) || '%'")
-    bindValues.push(input.customerName.trim())
+  if (normalizedName.length >= 1) {
+    clauses.push(
+      "(LOWER(customers.name) LIKE '%' || LOWER(?) || '%' OR LOWER(vehicles.model_name) LIKE '%' || LOWER(?) || '%' OR LOWER(vehicles.brand_name) LIKE '%' || LOWER(?) || '%')",
+    )
+    bindValues.push(input.customerName.trim(), input.customerName.trim(), input.customerName.trim())
   }
 
   if (clauses.length === 0) {

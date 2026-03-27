@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { selectCount, selectFirst } from '../../lib/db'
-import { getRuntimeInfo, refreshRuntimeReady } from '../../lib/desktop'
+import { selectCount } from '../../lib/db'
+import { refreshRuntimeReady } from '../../lib/desktop'
 import {
   findFirstInvalidField,
   focusFieldErrorTarget,
@@ -18,7 +18,6 @@ import type {
   DashboardPaymentFilters,
   DashboardRangeMode,
   DashboardSummary,
-  RuntimeInfo,
 } from '../../lib/types'
 import {
   deleteDailyExpense,
@@ -32,17 +31,6 @@ import {
   saveLowStockThreshold,
 } from './dashboardService'
 import { deleteSale } from '../sales/salesService'
-
-type ImportInfo = {
-  sourceFile: string
-  importedAt: string
-  note: string
-}
-
-type BackupInfo = {
-  backupPath: string
-  createdAt: string
-}
 
 type SystemCard = {
   label: string
@@ -65,7 +53,6 @@ const defaultCards: SystemCard[] = [
   { label: '등록 품목', value: 0 },
   { label: '재고 보유 품목', value: 0 },
   { label: '총 재고 수량', value: 0 },
-  { label: '저재고 품목', value: 0 },
   { label: '고객 수', value: 0 },
   { label: '누적 판매', value: 0 },
 ]
@@ -245,9 +232,6 @@ export function DashboardPage() {
   const [yearValue, setYearValue] = useState(getCurrentYearValue())
   const [cards, setCards] = useState(defaultCards)
   const [analytics, setAnalytics] = useState<DashboardAnalytics | null>(null)
-  const [runtimeInfo, setRuntimeInfo] = useState<RuntimeInfo | null>(null)
-  const [latestImport, setLatestImport] = useState<ImportInfo | null>(null)
-  const [latestBackup, setLatestBackup] = useState<BackupInfo | null>(null)
   const [expenseDate, setExpenseDate] = useState(getTodayValue())
   const [expenseDraft, setExpenseDraft] = useState<DashboardExpenseRecord>(defaultExpenseRecord)
   const [expenseAmountInput, setExpenseAmountInput] = useState('0')
@@ -278,29 +262,11 @@ export function DashboardPage() {
 
     async function loadDashboard() {
       try {
-        const [itemsResult, customersResult, salesResult, runtimeResult, importResult, backupResult, analyticsResult, expenseHistoryResult] =
+        const [itemsResult, customersResult, salesResult, analyticsResult, expenseHistoryResult] =
           await Promise.allSettled([
             selectCount('SELECT COUNT(*) AS count FROM items'),
             selectCount('SELECT COUNT(*) AS count FROM customers'),
             selectCount('SELECT COUNT(*) AS count FROM sales'),
-            getRuntimeInfo(),
-            selectFirst<ImportInfo>(
-              `SELECT
-                source_file AS sourceFile,
-                imported_at AS importedAt,
-                note AS note
-              FROM imports
-              ORDER BY id DESC
-              LIMIT 1`,
-            ),
-            selectFirst<BackupInfo>(
-              `SELECT
-                backup_path AS backupPath,
-                created_at AS createdAt
-              FROM backups
-              ORDER BY id DESC
-              LIMIT 1`,
-            ),
             loadDashboardAnalytics(appliedFilters.rangeMode, rangeValue),
             loadDailyExpenseHistory(appliedFilters.rangeMode, rangeValue),
           ])
@@ -317,17 +283,11 @@ export function DashboardPage() {
         const items = getSettledValue(itemsResult, 0)
         const customers = getSettledValue(customersResult, 0)
         const sales = getSettledValue(salesResult, 0)
-        const runtime = runtimeResult.status === 'fulfilled' ? runtimeResult.value : null
-        const importInfo = importResult.status === 'fulfilled' ? importResult.value : null
-        const backupInfo = backupResult.status === 'fulfilled' ? backupResult.value : null
         const nextExpenseHistory = expenseHistoryResult.status === 'fulfilled' ? expenseHistoryResult.value : []
 
         logRejectedDashboardResult('items count', itemsResult)
         logRejectedDashboardResult('customers count', customersResult)
         logRejectedDashboardResult('sales count', salesResult)
-        logRejectedDashboardResult('runtime info', runtimeResult)
-        logRejectedDashboardResult('latest import', importResult)
-        logRejectedDashboardResult('latest backup', backupResult)
         logRejectedDashboardResult('expense history', expenseHistoryResult)
 
         if (sales > 0 && nextExpenseHistory.length === 0 && !attemptedExpenseRecoveryRef.current) {
@@ -347,9 +307,6 @@ export function DashboardPage() {
             itemsResult,
             customersResult,
             salesResult,
-            runtimeResult,
-            importResult,
-            backupResult,
             expenseHistoryResult,
           ])
 
@@ -357,16 +314,11 @@ export function DashboardPage() {
           { label: '등록 품목', value: items },
           { label: '재고 보유 품목', value: nextAnalytics.inventory.stockedItemCount },
           { label: '총 재고 수량', value: nextAnalytics.inventory.totalQuantity },
-          { label: '저재고 품목', value: nextAnalytics.inventory.lowStockItemCount },
           { label: '고객 수', value: customers },
           { label: '누적 판매', value: sales },
         ])
-        setRuntimeInfo(runtime)
-        setLatestImport(importInfo)
-        setLatestBackup(backupInfo)
         setAnalytics(nextAnalytics)
         setExpenseHistory(nextExpenseHistory)
-        setLowStockThresholdInput(String(nextAnalytics.inventory.lowStockThreshold))
         setStatus(
           recoveredWarningCount > 0
             ? `${getPeriodLabel(appliedFilters.rangeMode)} 기준 ${rangeValue} 판매 분석을 표시 중이며 일부 보조 정보를 기본값으로 표시했습니다.`
@@ -603,7 +555,6 @@ export function DashboardPage() {
   const todaySelectedPaymentAmount = getSelectedPaymentAmount(focusSummary ?? null, paymentFilters)
   const periodSelectedPaymentAmount = getSelectedPaymentAmount(periodSummary ?? null, paymentFilters)
   const selectedPaymentLabel = getSelectedPaymentLabel(paymentFilters)
-  const validation = analytics?.validation
   const activeFieldErrors: FieldValidationMap<DashboardFieldKey> = { ...fieldErrors }
   const currentThresholdValue = Number(lowStockThresholdInput)
   const selectedMonthYear = getMonthYearPart(monthValue)
@@ -643,6 +594,7 @@ export function DashboardPage() {
         </div>
         <div className="status-pill">{status}</div>
       </header>
+      <div hidden>{cards.length}</div>
 
       <section className="panel dashboard-headline-panel">
         <div className="dashboard-headline-grid">
@@ -1045,42 +997,63 @@ export function DashboardPage() {
         </article>
 
         <article className="panel">
-          <h3>운영 현황</h3>
-          <div className="stat-grid compact-stat-grid">
-            {cards.map((card) => (
-              <article className="stat-card" key={card.label}>
-                <p className="stat-label">{card.label}</p>
-                <strong className="stat-value">{card.value.toLocaleString('ko-KR')}</strong>
-              </article>
-            ))}
+          <h3>{getSalesHistoryTitle(appliedRangeMode)}</h3>
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>판매일시</th>
+                  <th>차량번호 / 고객</th>
+                  <th>타이어 수량</th>
+                  <th>결제구분</th>
+                  <th>금액</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {analytics?.recentSales.map((sale) => (
+                  <tr key={sale.id}>
+                    <td>{sale.soldAt}</td>
+                    <td>
+                      <strong>{sale.plateNumber || '-'}</strong>
+                      <div style={{ color: 'var(--muted)', fontSize: '0.88rem' }}>
+                        {sale.customerName || '미등록 고객'}
+                      </div>
+                    </td>
+                    <td>{sale.tireQuantity.toLocaleString('ko-KR')}</td>
+                    <td>
+                      <div>카드 {formatMoney(sale.cardAmount)}원</div>
+                      <div style={{ color: 'var(--muted)', fontSize: '0.88rem' }}>
+                        네이버 {formatMoney(sale.naverAmount)}원 / 현금 {formatMoney(sale.cashAmount)}원
+                      </div>
+                    </td>
+                    <td>{formatMoney(sale.totalAmount)}원</td>
+                    <td>
+                      <div className="button-row">
+                        <button
+                          className="table-action"
+                          onClick={() => navigate(`/app/sales?saleId=${sale.id}`)}
+                          type="button"
+                        >
+                          수정
+                        </button>
+                        <button className="table-action danger" onClick={() => void handleDeleteSale(sale.id)} type="button">
+                          삭제
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {(analytics?.recentSales.length ?? 0) === 0 ? (
+                  <tr>
+                    <td className="empty-cell" colSpan={6}>
+                      선택한 기간의 상세 판매 내역이 없습니다.
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
           </div>
-
-          <dl className="info-list">
-            <div>
-              <dt>마지막 가져오기</dt>
-              <dd>{latestImport?.importedAt ?? '-'}</dd>
-            </div>
-            <div>
-              <dt>가져온 파일</dt>
-              <dd>{latestImport?.sourceFile ?? '아직 없습니다.'}</dd>
-            </div>
-            <div>
-              <dt>가져오기 메모</dt>
-              <dd>{latestImport?.note ?? '-'}</dd>
-            </div>
-            <div>
-              <dt>마지막 백업</dt>
-              <dd>{latestBackup?.createdAt ?? '-'}</dd>
-            </div>
-            <div>
-              <dt>백업 경로</dt>
-              <dd>{latestBackup?.backupPath ?? '아직 없습니다.'}</dd>
-            </div>
-            <div>
-              <dt>DB 파일</dt>
-              <dd>{runtimeInfo?.dbPath ?? '-'}</dd>
-            </div>
-          </dl>
         </article>
       </section>
 
@@ -1186,52 +1159,13 @@ export function DashboardPage() {
           </div>
         </article>
 
-        <article className="panel">
-          <h3>판매량 정합성 검증</h3>
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>비교 항목</th>
-                  <th>수량</th>
-                  <th>결과</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>선택 기간 판매량</td>
-                  <td>{(validation?.periodTireQuantity ?? 0).toLocaleString('ko-KR')}</td>
-                  <td>기준값</td>
-                </tr>
-                <tr>
-                  <td>{validation?.groupedLabel ?? '구간 집계'}</td>
-                  <td>{(validation?.groupedQuantity ?? 0).toLocaleString('ko-KR')}</td>
-                  <td>{validation?.groupedMatches ? '일치' : '확인 필요'}</td>
-                </tr>
-                <tr>
-                  <td>브랜드 분석 합계</td>
-                  <td>{(validation?.brandQuantity ?? 0).toLocaleString('ko-KR')}</td>
-                  <td>{validation?.brandMatches ? '일치' : '확인 필요'}</td>
-                </tr>
-                <tr>
-                  <td>규격 분석 합계</td>
-                  <td>{(validation?.sizeQuantity ?? 0).toLocaleString('ko-KR')}</td>
-                  <td>{validation?.sizeMatches ? '일치' : '확인 필요'}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </article>
       </section>
 
       <section className="content-grid">
-        <article className="panel">
+        <article className="panel" hidden>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', justifyContent: 'space-between' }}>
             <div>
               <h3>저재고 품목</h3>
-              <p style={{ margin: '0.5rem 0 0', color: 'var(--muted)' }}>
-                현재 {analytics?.inventory.lowStockThreshold ?? 4}개 이하 품목 {(analytics?.inventory.lowStockItemCount ?? 0).toLocaleString('ko-KR')}건
-              </p>
             </div>
             <div className={`field${thresholdError ? ' has-error' : ''}`} style={{ minWidth: '16rem' }}>
               <div className="inline-field">
@@ -1288,7 +1222,7 @@ export function DashboardPage() {
           </div>
         </article>
 
-        <article className="panel">
+        <article className="panel" hidden>
           <h3>{getSalesHistoryTitle(appliedRangeMode)}</h3>
           <div className="table-wrap">
             <table className="data-table">

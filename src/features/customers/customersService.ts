@@ -81,7 +81,44 @@ const latestSaleLineSummaryExpression = `TRIM(
 )`
 
 function buildCustomerSearchQuery(whereClause: string) {
-  return `WITH sale_totals AS (
+  return `WITH recent_sale_dates AS (
+      SELECT
+        sales.vehicle_id AS vehicleId,
+        MAX(sales.sold_at) AS latestSaleAt
+      FROM sales
+      WHERE sales.vehicle_id IS NOT NULL
+      GROUP BY sales.vehicle_id
+    ),
+    candidate_vehicles AS (
+      SELECT
+        vehicles.id AS vehicleId,
+        recent_sale_dates.latestSaleAt AS latestSaleAt
+      FROM vehicles
+      LEFT JOIN customers
+        ON customers.id = vehicles.customer_id
+      LEFT JOIN recent_sale_dates
+        ON recent_sale_dates.vehicleId = vehicles.id
+      WHERE ${whereClause}
+      ORDER BY
+        CASE WHEN COALESCE(recent_sale_dates.latestSaleAt, '') = '' THEN 1 ELSE 0 END,
+        COALESCE(recent_sale_dates.latestSaleAt, '') DESC,
+        CASE
+          WHEN TRIM(
+            CASE
+              WHEN TRIM(COALESCE(vehicles.plate_number, '')) <> '' THEN TRIM(vehicles.plate_number)
+              WHEN COALESCE(vehicles.normalized_plate_number, '') = ''
+                AND LENGTH(${legacyVehiclePlateSql}) BETWEEN 7 AND 8
+                AND ${legacyVehiclePlateSql} GLOB '*[0-9]*'
+                THEN TRIM(COALESCE(vehicles.model_name, ''))
+              ELSE ''
+            END
+          ) = '' THEN 1 ELSE 0
+        END,
+        vehicles.normalized_plate_number ASC,
+        vehicles.id DESC
+      LIMIT 300
+    ),
+    sale_totals AS (
       SELECT
         sales.vehicle_id AS vehicleId,
         COUNT(*) AS visitCount,
@@ -91,6 +128,8 @@ function buildCustomerSearchQuery(whereClause: string) {
         COALESCE(SUM(sales.cash_amount), 0) AS cashAmount,
         MAX(sales.sold_at) AS latestSaleAt
       FROM sales
+      INNER JOIN candidate_vehicles
+        ON candidate_vehicles.vehicleId = sales.vehicle_id
       WHERE sales.vehicle_id IS NOT NULL
       GROUP BY sales.vehicle_id
     ),
@@ -99,6 +138,8 @@ function buildCustomerSearchQuery(whereClause: string) {
         sales.vehicle_id AS vehicleId,
         COALESCE(SUM(CASE WHEN sale_lines.line_type = 'tire' THEN sale_lines.quantity ELSE 0 END), 0) AS saleQuantity
       FROM sales
+      INNER JOIN candidate_vehicles
+        ON candidate_vehicles.vehicleId = sales.vehicle_id
       INNER JOIN sale_lines
         ON sale_lines.sale_id = sales.id
       WHERE sales.vehicle_id IS NOT NULL
@@ -109,6 +150,8 @@ function buildCustomerSearchQuery(whereClause: string) {
         work_logs.vehicle_id AS vehicleId,
         COALESCE(SUM(work_logs.amount), 0) AS alignmentAmount
       FROM work_logs
+      INNER JOIN candidate_vehicles
+        ON candidate_vehicles.vehicleId = work_logs.vehicle_id
       WHERE work_logs.vehicle_id IS NOT NULL
         AND (
           LOWER(work_logs.work_type) LIKE '%alignment%'
@@ -120,15 +163,15 @@ function buildCustomerSearchQuery(whereClause: string) {
     ),
     latest_sales AS (
       SELECT
-        vehicles.id AS vehicleId,
+        candidate_vehicles.vehicleId AS vehicleId,
         sales.id AS saleId,
         sales.memo AS saleMemo
-      FROM vehicles
+      FROM candidate_vehicles
       LEFT JOIN sales
         ON sales.id = (
           SELECT sales_latest.id
           FROM sales sales_latest
-          WHERE sales_latest.vehicle_id = vehicles.id
+          WHERE sales_latest.vehicle_id = candidate_vehicles.vehicleId
           ORDER BY sales_latest.sold_at DESC, sales_latest.id DESC
           LIMIT 1
         )
@@ -199,7 +242,9 @@ function buildCustomerSearchQuery(whereClause: string) {
         ),
         ''
       ) AS memo
-    FROM vehicles
+    FROM candidate_vehicles
+    INNER JOIN vehicles
+      ON vehicles.id = candidate_vehicles.vehicleId
     LEFT JOIN customers
       ON customers.id = vehicles.customer_id
     LEFT JOIN sale_totals
@@ -212,10 +257,9 @@ function buildCustomerSearchQuery(whereClause: string) {
       ON latest_sales.vehicleId = vehicles.id
     LEFT JOIN latest_sale_lines
       ON latest_sale_lines.vehicleId = vehicles.id
-    WHERE ${whereClause}
     ORDER BY
-      CASE WHEN COALESCE(sale_totals.latestSaleAt, '') = '' THEN 1 ELSE 0 END,
-      COALESCE(sale_totals.latestSaleAt, '') DESC,
+      CASE WHEN COALESCE(candidate_vehicles.latestSaleAt, '') = '' THEN 1 ELSE 0 END,
+      COALESCE(candidate_vehicles.latestSaleAt, '') DESC,
       CASE
         WHEN TRIM(
           CASE
@@ -294,17 +338,17 @@ export async function searchCustomers(filters: Partial<CustomerSearchFilters> = 
   const queryClauses: string[] = []
   const queryBindValues: string[] = []
 
-  if (normalizedPlateQuery.length >= 2) {
+  if (normalizedPlateQuery.length >= 1) {
     queryClauses.push(`(vehicles.normalized_plate_number LIKE ? OR ${legacyVehiclePlateSql} LIKE ?)`)
     queryBindValues.push(`%${normalizedPlateQuery}%`, `%${normalizedPlateQuery}%`)
   }
 
-  if (normalizedPhoneQuery.length >= 4) {
-    queryClauses.push('customers.normalized_phone LIKE ?')
-    queryBindValues.push(`%${normalizedPhoneQuery}%`)
+  if (normalizedPhoneQuery.length >= 1) {
+    queryClauses.push("(customers.normalized_phone LIKE ? OR REPLACE(COALESCE(customers.phone, ''), '-', '') LIKE ?)")
+    queryBindValues.push(`%${normalizedPhoneQuery}%`, `%${normalizedPhoneQuery}%`)
   }
 
-  if (normalizedTextQuery.length >= 2) {
+  if (normalizedTextQuery.length >= 1) {
     queryClauses.push(
       "(LOWER(customers.name) LIKE '%' || LOWER(?) || '%' OR LOWER(vehicles.model_name) LIKE '%' || LOWER(?) || '%' OR LOWER(vehicles.brand_name) LIKE '%' || LOWER(?) || '%')",
     )
