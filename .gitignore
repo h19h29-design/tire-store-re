@@ -12,6 +12,7 @@ dist
 dist-ssr
 *.local
 .quote-api-data/
+.billing-api-data/
 .local-run/
 output/
 test-results/

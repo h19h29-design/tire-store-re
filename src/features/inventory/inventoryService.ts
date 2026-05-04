@@ -1,6 +1,12 @@
 ﻿import { execute, selectFirst, selectRows, runTransaction } from '../../lib/db'
 import { loadLowStockThresholdSetting } from '../../lib/appSettings'
-import { getCurrentSeoulDateTimeValue, getExactSizeSearchToken, normalizeSizeLabel, normalizeText } from '../../lib/normalize'
+import {
+  getCurrentSeoulDateTimeValue,
+  getExactSizeSearchToken,
+  normalizePatternText,
+  normalizeSizeLabel,
+  normalizeText,
+} from '../../lib/normalize'
 import { loadBrandDiscountRules, loadProductDiscountRules } from '../settings/settingsService'
 import type {
   InventoryCatalogSettingsInput,
@@ -87,6 +93,44 @@ const normalizedProductSql = `LOWER(
     ),
     ')',
     ''
+  )
+)`
+const normalizedPatternLabelSql = `LOWER(
+  REPLACE(
+    REPLACE(
+      REPLACE(
+        REPLACE(
+          REPLACE(COALESCE(items.pattern_name, ''), ' ', ''),
+          '-',
+          ''
+        ),
+        '/',
+        ''
+      ),
+      '.',
+      ''
+    ),
+    '＋',
+    '+'
+  )
+)`
+const normalizedAliasLabelSql = `LOWER(
+  REPLACE(
+    REPLACE(
+      REPLACE(
+        REPLACE(
+          REPLACE(COALESCE(item_aliases.alias_value, ''), ' ', ''),
+          '-',
+          ''
+        ),
+        '/',
+        ''
+      ),
+      '.',
+      ''
+    ),
+    '＋',
+    '+'
   )
 )`
 function buildDigitsOnlySql(expression: string) {
@@ -230,9 +274,23 @@ export async function searchInventoryItems(
       )`
     }
 
+    if (isPatternCodeToken(token)) {
+      params.push(token, token)
+      return `(
+        ${normalizedPatternLabelSql} = ?
+        OR EXISTS (
+          SELECT 1
+          FROM item_aliases
+          WHERE item_aliases.item_id = items.id
+            AND ${normalizedAliasLabelSql} = ?
+        )
+      )`
+    }
+
     const tokenParts = [
       'items.normalized_brand LIKE ?',
       'items.normalized_pattern LIKE ?',
+      `${normalizedPatternLabelSql} LIKE ?`,
       'items.normalized_size LIKE ?',
       "LOWER(COALESCE(items.sku_code, '')) LIKE ?",
       `${normalizedProductSql} LIKE ?`,
@@ -244,7 +302,7 @@ export async function searchInventoryItems(
       )`,
     ]
 
-    params.push(likeValue, likeValue, likeValue, likeValue, likeValue, likeValue)
+    params.push(likeValue, likeValue, likeValue, likeValue, likeValue, likeValue, likeValue)
 
     if (/^\d+$/.test(token)) {
       tokenParts.push(`${sizeDigitsSql} LIKE ?`)
@@ -515,7 +573,7 @@ export async function saveItemCatalogSettings(
   const patternName = input.patternName.trim()
   const sizeLabel = normalizeSizeLabel(input.sizeLabel)
   const normalizedBrand = normalizeText(brandName)
-  const normalizedPattern = normalizeText(patternName)
+  const normalizedPattern = normalizePatternText(patternName)
   const normalizedSize = normalizeText(sizeLabel)
 
   if (!brandName || !patternName || !sizeLabel) {
@@ -565,7 +623,7 @@ export async function saveItemCatalogSettings(
     `INSERT INTO item_aliases (item_id, alias_type, alias_value, normalized_alias)
     VALUES (?, 'manual', ?, ?)
     ON CONFLICT(item_id, normalized_alias) DO NOTHING`,
-    [itemId, patternName, normalizedPattern],
+      [itemId, patternName, normalizedPattern],
   )
 }
 
@@ -663,7 +721,7 @@ function collectAliases(input: InventoryCreateItemInput) {
   const candidates = [input.patternName, input.productName ?? '']
   for (const candidate of candidates) {
     const trimmed = candidate.trim()
-    const normalized = normalizeText(trimmed)
+    const normalized = normalizePatternText(trimmed)
     if (!trimmed || !normalized) {
       continue
     }
@@ -677,7 +735,7 @@ function buildItemIdentity(input: Pick<InventoryCreateItemInput, 'brandName' | '
   const patternName = input.patternName.trim()
   const sizeLabel = normalizeSizeLabel(input.sizeLabel)
   const normalizedBrand = normalizeText(brandName)
-  const normalizedPattern = normalizeText(patternName)
+  const normalizedPattern = normalizePatternText(patternName)
   const normalizedSize = normalizeText(sizeLabel)
 
   return {
@@ -784,7 +842,7 @@ export async function createInventoryItem(input: InventoryCreateItemInput) {
       `INSERT INTO item_aliases (item_id, alias_type, alias_value, normalized_alias)
       VALUES (?, 'manual', ?, ?)
       ON CONFLICT(item_id, normalized_alias) DO NOTHING`,
-      [itemId, alias, normalizeText(alias)],
+      [itemId, alias, normalizePatternText(alias)],
     )
   }
 
@@ -849,7 +907,7 @@ function buildSearchTokens(query: string) {
     new Set(
       query
         .split(/\s+/)
-        .map((token) => normalizeText(token))
+        .map((token) => normalizePatternText(token))
         .filter(Boolean),
     ),
   )
@@ -857,5 +915,9 @@ function buildSearchTokens(query: string) {
 
 function isSizeMarkerToken(token: string) {
   return /^[a-z]$/.test(token)
+}
+
+function isPatternCodeToken(token: string) {
+  return /^[a-z]{1,6}\d{1,5}\+?$/.test(token)
 }
 

@@ -500,6 +500,80 @@ export type BackupLogRow = {
   note: string
 }
 
+export type BillingPlanCode = 'monthly' | 'annual'
+
+export type BillingPlan = {
+  code: BillingPlanCode
+  name: string
+  description: string
+  initialChargeAmount: number
+  recurringChargeAmount: number
+  billingCycle: 'monthly' | 'annual'
+}
+
+export type LicenseStatusCode = 'inactive' | 'active' | 'grace' | 'expired' | 'suspended'
+
+export type LicenseStatus = {
+  status: LicenseStatusCode
+  storeCode: string
+  storeName: string
+  planCode: BillingPlanCode | ''
+  planName: string
+  billingCycle: 'monthly' | 'annual' | ''
+  isTestMode: boolean
+  deviceId: string
+  deviceName: string
+  deviceLimit: number
+  registeredDeviceCount: number
+  expiresAt: string | null
+  graceUntil: string | null
+  nextBillingAt: string | null
+  lastVerifiedAt: string | null
+  activationCodeMasked: string
+  message: string
+}
+
+export type BillingPreferences = {
+  serverBaseUrl: string
+  storeCode: string
+  activationCode: string
+  deviceId: string
+  deviceName: string
+  checkoutMode: 'simulate' | 'toss'
+  tossClientKey: string
+  tossSecretKey: string
+  lastCheckoutUrl: string
+  lastVerifiedAt: string | null
+  cachedStatus: LicenseStatus | null
+}
+
+export type TestBillingCheckoutInput = {
+  storeName: string
+  ownerName: string
+  phone: string
+  planCode: BillingPlanCode
+}
+
+export type TestBillingCheckoutResult = {
+  storeCode: string
+  activationCode: string
+  status: LicenseStatus
+}
+
+export type BillingCheckoutSessionInput = TestBillingCheckoutInput & {
+  mode: 'simulate' | 'toss'
+  tossClientKey: string
+  tossSecretKey: string
+}
+
+export type BillingCheckoutSessionResult = {
+  sessionId: string
+  storeCode: string
+  activationCode: string
+  checkoutUrl: string
+  status: LicenseStatus
+}
+
 export type PlateLookupRow = {
   vehicleId: number
   customerId: number | null

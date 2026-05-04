@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Tire Store",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "identifier": "com.tirestore.desktop",
   "build": {
     "frontendDist": "../dist",
@@ -25,6 +25,7 @@
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": "all",
     "resources": [
       "resources/tire-store.db"
@@ -38,6 +39,12 @@
     ]
   },
   "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDcyNEI4Q0VDOTAxMzRFNjAKUldSZ1RoT1E3SXhMY29xNjkzRXpDa3dMb215UE5vWWp1dkxpOGZ3Q0JHWUx2SUd3RERMY2tPZ3oK",
+      "endpoints": [
+        "https://litire.h19h19.synology.me/tauri-updates/stable/windows/x86_64/{{current_version}}"
+      ]
+    },
     "sql": {
       "preload": [
         "sqlite:tire-store.db"

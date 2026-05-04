@@ -5,6 +5,14 @@ export function normalizeText(value: string) {
     .replace(/[^\da-z\uac00-\ud7a3]/g, '')
 }
 
+export function normalizePatternText(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[＋]/g, '+')
+    .replace(/[^\da-z\uac00-\ud7a3+]/g, '')
+}
+
 export function normalizePhone(value: string) {
   return value.replace(/\D/g, '')
 }
