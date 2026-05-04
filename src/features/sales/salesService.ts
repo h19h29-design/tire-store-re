@@ -181,6 +181,33 @@ function isAlignmentDescription(value: string) {
   return normalized.includes('alignment') || normalized.includes(normalizeText('얼라이'))
 }
 
+function getServiceLineDescription(lineType: string, snapshotName: string) {
+  const trimmed = snapshotName.trim()
+  const normalizedSnapshot = normalizeText(trimmed)
+
+  if (normalizedSnapshot === 'used') {
+    return '중고'
+  }
+  if (normalizedSnapshot === 'wheel') {
+    return '휠'
+  }
+  if (trimmed) {
+    return trimmed
+  }
+  if (lineType === 'used') {
+    return '중고'
+  }
+  if (lineType === 'wheel') {
+    return '휠'
+  }
+  return '추가 작업'
+}
+
+function isPlaceholderServiceDescription(value: string) {
+  const normalized = normalizeText(value)
+  return normalized === 'service' || normalized === 'additionalservice'
+}
+
 async function ensureSalesSchema() {
   salesSchemaPromise ??= (async () => {
     const saleColumns = await selectRows<TableInfoRow>('PRAGMA table_info(sales)')
@@ -614,8 +641,9 @@ export async function loadSaleForEdit(saleId: number): Promise<SaleEditDraft> {
     }
 
     serviceAmount += amount
-    if (row.itemSnapshotName.trim()) {
-      serviceDescriptions.push(row.itemSnapshotName.trim())
+    const description = getServiceLineDescription(row.lineType, row.itemSnapshotName)
+    if (description && !isPlaceholderServiceDescription(description)) {
+      serviceDescriptions.push(description)
     }
   }
 

@@ -20,6 +20,7 @@ import type {
   DashboardSummary,
 } from '../../lib/types'
 import {
+  appendDailyExpense,
   deleteDailyExpense,
   getCurrentMonthValue,
   getCurrentYearValue,
@@ -48,6 +49,8 @@ type DashboardAppliedFilters = {
   monthValue: string
   yearValue: string
 }
+
+type ExpenseInputMode = 'edit' | 'append'
 
 const defaultCards: SystemCard[] = [
   { label: '등록 품목', value: 0 },
@@ -235,6 +238,7 @@ export function DashboardPage() {
   const [expenseDate, setExpenseDate] = useState(getTodayValue())
   const [expenseDraft, setExpenseDraft] = useState<DashboardExpenseRecord>(defaultExpenseRecord)
   const [expenseAmountInput, setExpenseAmountInput] = useState('0')
+  const [expenseInputMode, setExpenseInputMode] = useState<ExpenseInputMode>('edit')
   const [expenseHistory, setExpenseHistory] = useState<DashboardExpenseHistoryRow[]>([])
   const [lowStockThresholdInput, setLowStockThresholdInput] = useState('4')
   const [paymentFilters, setPaymentFilters] = useState<DashboardPaymentFilters>(defaultPaymentFilters)
@@ -248,6 +252,7 @@ export function DashboardPage() {
   useEffect(() => {
     if (rangeMode === 'date') {
       setExpenseDate(dateValue)
+      setExpenseInputMode('edit')
     }
   }, [rangeMode, dateValue])
 
@@ -343,6 +348,10 @@ export function DashboardPage() {
     let active = true
 
     async function loadExpense() {
+      if (expenseInputMode === 'append') {
+        return
+      }
+
       try {
         const nextExpense = await loadDailyExpense(expenseDate)
         if (!active) {
@@ -374,7 +383,7 @@ export function DashboardPage() {
     return () => {
       active = false
     }
-  }, [expenseDate, refreshKey])
+  }, [expenseDate, expenseInputMode, refreshKey])
 
   useEffect(() => {
     function handleEscape(event: KeyboardEvent) {
@@ -396,6 +405,7 @@ export function DashboardPage() {
       setExpenseDate(getTodayValue())
       setExpenseDraft(defaultExpenseRecord)
       setExpenseAmountInput('0')
+      setExpenseInputMode('edit')
       setFieldErrors({})
       setStatus('지출 입력을 취소했습니다.')
     }
@@ -415,6 +425,37 @@ export function DashboardPage() {
     })
     setRefreshKey((current) => current + 1)
     setStatus('선택한 기간을 다시 조회하는 중입니다.')
+  }
+
+  function handleStartAppendExpense() {
+    setExpenseInputMode('append')
+    setExpenseDraft({
+      expenseDate,
+      amount: 0,
+      note: '',
+      updatedAt: null,
+    })
+    setExpenseAmountInput('')
+    setFieldErrors((current) => {
+      const next = { ...current }
+      delete next['dashboard-expense-amount']
+      return next
+    })
+    setStatus(`${expenseDate}에 추가할 지출 금액을 입력해 주세요.`)
+  }
+
+  async function handleSwitchToEditExpense() {
+    setExpenseInputMode('edit')
+    try {
+      const nextExpense = await loadDailyExpense(expenseDate)
+      setExpenseDraft(nextExpense)
+      setExpenseAmountInput(String(Math.max(0, nextExpense.amount)))
+      setStatus(`${expenseDate} 기존 지출 수정 모드입니다.`)
+    } catch (error) {
+      console.error(error)
+      setStatus(getErrorMessage(error))
+      await showErrorDialog(error, '지출 불러오기 실패')
+    }
   }
 
   async function handleSaveExpense() {
@@ -453,12 +494,19 @@ export function DashboardPage() {
 
     try {
       setSavingExpense(true)
-      await saveDailyExpense({
+      const payload = {
         expenseDate,
         amount: expenseAmount,
         note: expenseDraft.note,
-      })
-      setStatus(`${expenseDate} 일일 지출을 저장했습니다.`)
+      }
+      if (expenseInputMode === 'append') {
+        await appendDailyExpense(payload)
+        setExpenseInputMode('edit')
+        setStatus(`${expenseDate} 지출을 추가했습니다.`)
+      } else {
+        await saveDailyExpense(payload)
+        setStatus(`${expenseDate} 일일 지출을 저장했습니다.`)
+      }
       setRefreshKey((current) => current + 1)
     } catch (error) {
       console.error(error)
@@ -874,7 +922,30 @@ export function DashboardPage() {
 
       <section className="content-grid">
         <article className="panel">
-          <h3>일일 지출 입력</h3>
+          <div style={{ alignItems: 'center', display: 'flex', gap: '0.75rem', justifyContent: 'space-between' }}>
+            <div>
+              <h3>일일 지출 입력</h3>
+              <p style={{ color: 'var(--muted)', margin: '0.25rem 0 0' }}>
+                {expenseInputMode === 'append'
+                  ? '기존 지출에 새 지출을 더해서 저장합니다.'
+                  : '현재 날짜의 지출 합계를 수정합니다.'}
+              </p>
+            </div>
+            <button
+              className="secondary-button"
+              disabled={savingExpense}
+              onClick={() => {
+                if (expenseInputMode === 'append') {
+                  void handleSwitchToEditExpense()
+                  return
+                }
+                handleStartAppendExpense()
+              }}
+              type="button"
+            >
+              {expenseInputMode === 'append' ? '기존 지출 수정' : '지출 추가'}
+            </button>
+          </div>
           <div className="form-grid">
             <label className={`field${expenseDateError ? ' has-error' : ''}`}>
               <span>지출 날짜</span>
@@ -940,15 +1011,16 @@ export function DashboardPage() {
 
           <div className="button-row">
             <button className="primary-button" disabled={savingExpense} onClick={handleSaveExpense} type="button">
-              {savingExpense ? '저장 중..' : '지출 저장'}
+              {savingExpense ? '저장 중..' : expenseInputMode === 'append' ? '지출 추가 저장' : '지출 저장'}
             </button>
           </div>
 
           <div className="note-box">
             <strong>{expenseDate} 지출 반영</strong>
             <p>
-              마지막 수정 시각은 {expenseDraft.updatedAt ?? '아직 없습니다.'}입니다. 저장한 지출은 일간, 월간, 연간
-              수익 계산에서 자동으로 차감됩니다.
+              {expenseInputMode === 'append'
+                ? '추가 저장 시 기존 지출 금액에 입력한 금액을 더하고, 비고는 뒤에 이어 붙입니다.'
+                : `마지막 수정 시각은 ${expenseDraft.updatedAt ?? '아직 없습니다.'}입니다. 저장한 지출은 일간, 월간, 연간 수익 계산에서 자동으로 차감됩니다.`}
             </p>
           </div>
 

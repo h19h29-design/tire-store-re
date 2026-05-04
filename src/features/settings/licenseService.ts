@@ -43,7 +43,7 @@ type ServerLicenseResponse = {
 
 export const DEFAULT_BILLING_SERVER_BASE_URL = 'https://litire.h19h19.synology.me'
 export const DEFAULT_DEVICE_NAME = '매장PC'
-export const APP_VERSION = '1.6.0'
+export const APP_VERSION = '1.6.1'
 
 export const BILLING_PLANS: BillingPlan[] = [
   {

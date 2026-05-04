@@ -285,7 +285,7 @@ function buildSummaryLines(
         return summary
       }
 
-      if (row.lineType === 'service') {
+      if (row.lineType !== 'tire') {
         summary.serviceAmount += lineTotal
       }
 
@@ -737,7 +737,7 @@ export async function saveDailyExpense(input: DashboardExpenseInput) {
 
   const expenseDate = input.expenseDate.trim()
   if (!/^\d{4}-\d{2}-\d{2}$/.test(expenseDate)) {
-    throw new Error('吏異??좎쭨瑜??ㅼ떆 ?뺤씤??二쇱꽭??')
+    throw new Error('지출 날짜를 다시 확인해 주세요.')
   }
 
   const amount = Math.max(0, Math.round(Number(input.amount) || 0))
@@ -761,6 +761,34 @@ export async function saveDailyExpense(input: DashboardExpenseInput) {
       updated_at = CURRENT_TIMESTAMP`,
     [expenseDate, amount, note],
   )
+}
+
+export async function appendDailyExpense(input: DashboardExpenseInput) {
+  await ensureDashboardSchema()
+
+  const expenseDate = input.expenseDate.trim()
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(expenseDate)) {
+    throw new Error('지출 날짜를 다시 확인해 주세요.')
+  }
+
+  const amountToAdd = Math.max(0, Math.round(Number(input.amount) || 0))
+  const noteToAdd = input.note.trim()
+  if (amountToAdd === 0 && !noteToAdd) {
+    throw new Error('추가할 지출 금액이나 비고를 입력해 주세요.')
+  }
+
+  const current = await loadDailyExpense(expenseDate)
+  const nextAmount = Math.max(0, current.amount + amountToAdd)
+  const nextNote =
+    current.note.trim() && noteToAdd
+      ? `${current.note.trim()} / ${noteToAdd}`
+      : current.note.trim() || noteToAdd
+
+  await saveDailyExpense({
+    expenseDate,
+    amount: nextAmount,
+    note: nextNote,
+  })
 }
 
 export async function deleteDailyExpense(expenseDate: string) {
