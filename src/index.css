@@ -1,5 +1,8 @@
 :root {
-  font-family: "Malgun Gothic", "Segoe UI", sans-serif;
+  font-family:
+    "Malgun Gothic",
+    "Segoe UI",
+    sans-serif;
   line-height: 1.5;
   font-weight: 400;
   color: #20180f;
@@ -8,14 +11,324 @@
     radial-gradient(circle at bottom right, rgba(196, 111, 52, 0.18), transparent 30%),
     #f6efe3;
   --ink: #24180f;
+  --titleText: #24180f;
   --muted: #635446;
+  --mutedText: #635446;
+  --body-text: #24180f;
+  --bodyText: #24180f;
+  --appBackground: #f6efe3;
+  --appBackgroundGradientStart: #f6efe3;
+  --appBackgroundGradientEnd: #fff7ea;
+  --sidebarBackground: #fff6e4;
   --panel: #fffaf1;
+  --panelBackground: #fffaf1;
+  --panel-soft: #fffaf1;
+  --panelBackgroundSoft: #fffaf1;
+  --panel-glass: rgba(255, 255, 255, 0.72);
+  --panelBackgroundGlass: rgba(255, 255, 255, 0.72);
   --panel-border: rgba(96, 67, 35, 0.14);
+  --borderDefault: rgba(96, 67, 35, 0.14);
+  --panel-border-strong: rgba(184, 91, 37, 0.34);
+  --borderStrong: rgba(184, 91, 37, 0.34);
   --accent: #b85b25;
+  --primaryAccent: #b85b25;
+  --accent-secondary: #d0904a;
+  --secondaryAccent: #d0904a;
+  --glow-accent: rgba(184, 91, 37, 0.22);
+  --glowAccent: rgba(184, 91, 37, 0.22);
+  --success: #2f6f31;
+  --warning: #9a5b00;
+  --danger: #b54530;
+  --table-header: rgba(255, 250, 241, 0.98);
+  --tableHeaderBackground: rgba(255, 250, 241, 0.98);
+  --table-row: transparent;
+  --tableRowBackground: transparent;
+  --table-row-hover: rgba(184, 91, 37, 0.06);
+  --tableRowHover: rgba(184, 91, 37, 0.06);
+  --radius-panel: 1.25rem;
+  --radius-control: 0.95rem;
+  --shadow-panel: 0 22px 55px rgba(57, 44, 23, 0.12);
+  --shadow-glow: 0 18px 40px rgba(57, 44, 23, 0.06);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+:root[data-theme='premium'] {
+  font-family:
+    "Pretendard",
+    "SUIT",
+    "Inter",
+    "Segoe UI",
+    "Malgun Gothic",
+    "Apple SD Gothic Neo",
+    sans-serif;
+  color: #f4f8ff;
+  background:
+    radial-gradient(circle at 18% 0%, rgba(50, 200, 255, 0.16), transparent 34%),
+    radial-gradient(circle at 88% 12%, rgba(0, 224, 255, 0.08), transparent 30%),
+    radial-gradient(circle at 72% 95%, rgba(54, 217, 138, 0.06), transparent 28%),
+    linear-gradient(145deg, #050a10 0%, #060b12 48%, #0a1624 100%);
+  --ink: #f4f8ff;
+  --titleText: #f4f8ff;
+  --muted: #75889e;
+  --mutedText: #75889e;
+  --body-text: #b8c7da;
+  --bodyText: #b8c7da;
+  --appBackground: #060b12;
+  --appBackgroundGradientStart: #050a10;
+  --appBackgroundGradientEnd: #0a1624;
+  --sidebarBackground: #08111c;
+  --panel: #0e1622;
+  --panelBackground: #0e1622;
+  --panel-soft: #111c2b;
+  --panelBackgroundSoft: #111c2b;
+  --panel-glass: rgba(255, 255, 255, 0.035);
+  --panelBackgroundGlass: rgba(255, 255, 255, 0.035);
+  --panel-border: rgba(120, 180, 255, 0.16);
+  --borderDefault: rgba(120, 180, 255, 0.16);
+  --panel-border-strong: rgba(50, 200, 255, 0.35);
+  --borderStrong: rgba(50, 200, 255, 0.35);
+  --accent: #32c8ff;
+  --primaryAccent: #32c8ff;
+  --accent-secondary: #00e0ff;
+  --secondaryAccent: #00e0ff;
+  --glow-accent: rgba(50, 200, 255, 0.38);
+  --glowAccent: rgba(50, 200, 255, 0.38);
+  --success: #36d98a;
+  --warning: #ffb84d;
+  --danger: #ff6b6b;
+  --table-header: #111b29;
+  --tableHeaderBackground: #111b29;
+  --table-row: #0e1622;
+  --tableRowBackground: #0e1622;
+  --table-row-hover: rgba(50, 200, 255, 0.08);
+  --tableRowHover: rgba(50, 200, 255, 0.08);
+  --radius-panel: 1.15rem;
+  --radius-control: 0.75rem;
+  --shadow-panel: 0 22px 70px rgba(0, 0, 0, 0.34);
+  --shadow-glow: 0 0 0 1px rgba(50, 200, 255, 0.08), 0 0 26px rgba(50, 200, 255, 0.08);
+}
+
+:root[data-theme='hud'] {
+  font-family:
+    "Pretendard",
+    "SUIT",
+    "Inter",
+    "Segoe UI",
+    "Malgun Gothic",
+    "Apple SD Gothic Neo",
+    sans-serif;
+  color: #f7fbff;
+  background:
+    radial-gradient(circle at 50% 4%, rgba(89, 225, 255, 0.22), transparent 24%),
+    radial-gradient(circle at 18% 22%, rgba(0, 180, 255, 0.16), transparent 34%),
+    radial-gradient(circle at 82% 20%, rgba(80, 156, 255, 0.14), transparent 36%),
+    linear-gradient(145deg, #07101a 0%, #091829 48%, #0d1d30 100%);
+  --ink: #f7fbff;
+  --titleText: #f7fbff;
+  --muted: #9eb4c9;
+  --mutedText: #6e849a;
+  --body-text: #d7e6f5;
+  --bodyText: #d7e6f5;
+  --appBackground: #07101a;
+  --appBackgroundGradientStart: #07101a;
+  --appBackgroundGradientEnd: #0d1d30;
+  --sidebarBackground: rgba(8, 19, 32, 0.86);
+  --panel: rgba(10, 22, 36, 0.82);
+  --panelBackground: rgba(10, 22, 36, 0.82);
+  --panel-soft: rgba(14, 28, 46, 0.78);
+  --panelBackgroundSoft: rgba(14, 28, 46, 0.78);
+  --panel-glass: rgba(255, 255, 255, 0.055);
+  --panelBackgroundGlass: rgba(255, 255, 255, 0.055);
+  --panel-border: rgba(90, 170, 255, 0.18);
+  --borderDefault: rgba(90, 170, 255, 0.18);
+  --panel-border-strong: rgba(70, 200, 255, 0.4);
+  --borderStrong: rgba(70, 200, 255, 0.4);
+  --accent: #32c8ff;
+  --primaryAccent: #32c8ff;
+  --accent-secondary: #59e1ff;
+  --secondaryAccent: #59e1ff;
+  --glow-accent: rgba(50, 200, 255, 0.35);
+  --glowAccent: rgba(50, 200, 255, 0.35);
+  --success: #4ddba3;
+  --warning: #ffc766;
+  --danger: #ff7b7b;
+  --table-header: rgba(20, 38, 60, 0.92);
+  --tableHeaderBackground: rgba(20, 38, 60, 0.92);
+  --table-row: rgba(11, 22, 35, 0.78);
+  --tableRowBackground: rgba(11, 22, 35, 0.78);
+  --table-row-hover: rgba(50, 200, 255, 0.12);
+  --tableRowHover: rgba(50, 200, 255, 0.12);
+  --radius-panel: 1.05rem;
+  --radius-control: 0.68rem;
+  --shadow-panel: 0 28px 78px rgba(0, 0, 0, 0.32), 0 0 55px rgba(0, 180, 255, 0.11);
+  --shadow-glow: 0 0 0 1px rgba(70, 200, 255, 0.12), 0 0 30px rgba(50, 200, 255, 0.12);
+}
+
+:root[data-theme='mono'] {
+  font-family:
+    "Pretendard",
+    "Inter",
+    "Segoe UI",
+    "Malgun Gothic",
+    "Apple SD Gothic Neo",
+    sans-serif;
+  color: #111111;
+  background:
+    linear-gradient(90deg, rgba(0, 0, 0, 0.055) 1px, transparent 1px),
+    linear-gradient(0deg, rgba(0, 0, 0, 0.055) 1px, transparent 1px),
+    #eeeeee;
+  background-size: 28px 28px;
+  --ink: #111111;
+  --titleText: #111111;
+  --muted: #5f5f5f;
+  --mutedText: #5f5f5f;
+  --body-text: #191919;
+  --bodyText: #191919;
+  --appBackground: #eeeeee;
+  --appBackgroundGradientStart: #f8f8f8;
+  --appBackgroundGradientEnd: #e5e5e5;
+  --sidebarBackground: #111111;
+  --panel: #ffffff;
+  --panelBackground: #ffffff;
+  --panel-soft: #eeeeee;
+  --panelBackgroundSoft: #eeeeee;
+  --panel-glass: #ffffff;
+  --panelBackgroundGlass: #ffffff;
+  --panel-border: #111111;
+  --borderDefault: #111111;
+  --panel-border-strong: #000000;
+  --borderStrong: #000000;
+  --accent: #111111;
+  --primaryAccent: #111111;
+  --accent-secondary: #666666;
+  --secondaryAccent: #666666;
+  --glow-accent: rgba(0, 0, 0, 0.16);
+  --glowAccent: rgba(0, 0, 0, 0.16);
+  --success: #1f1f1f;
+  --warning: #555555;
+  --danger: #111111;
+  --table-header: #111111;
+  --tableHeaderBackground: #111111;
+  --table-row: #ffffff;
+  --tableRowBackground: #ffffff;
+  --table-row-hover: #eeeeee;
+  --tableRowHover: #eeeeee;
+  --radius-panel: 0;
+  --radius-control: 0;
+  --shadow-panel: none;
+  --shadow-glow: none;
+}
+
+:root[data-theme='pit'] {
+  font-family:
+    "Pretendard",
+    "SUIT",
+    "Inter",
+    "Segoe UI",
+    "Malgun Gothic",
+    "Apple SD Gothic Neo",
+    sans-serif;
+  color: #f7f4e8;
+  background:
+    radial-gradient(circle at 82% 12%, rgba(245, 205, 65, 0.18), transparent 28%),
+    linear-gradient(135deg, #171a13, #22251b 56%, #171810);
+  --ink: #f7f4e8;
+  --titleText: #f7f4e8;
+  --muted: #b9b69e;
+  --mutedText: #b9b69e;
+  --body-text: #ede8d6;
+  --bodyText: #ede8d6;
+  --appBackground: #171a13;
+  --appBackgroundGradientStart: #171a13;
+  --appBackgroundGradientEnd: #22251b;
+  --sidebarBackground: #12140f;
+  --panel: rgba(28, 31, 22, 0.88);
+  --panelBackground: rgba(28, 31, 22, 0.88);
+  --panel-soft: rgba(39, 43, 29, 0.9);
+  --panelBackgroundSoft: rgba(39, 43, 29, 0.9);
+  --panel-glass: rgba(255, 255, 255, 0.045);
+  --panelBackgroundGlass: rgba(255, 255, 255, 0.045);
+  --panel-border: rgba(244, 204, 69, 0.2);
+  --borderDefault: rgba(244, 204, 69, 0.2);
+  --panel-border-strong: rgba(243, 201, 63, 0.54);
+  --borderStrong: rgba(243, 201, 63, 0.54);
+  --accent: #f3c93f;
+  --primaryAccent: #f3c93f;
+  --accent-secondary: #9ee06f;
+  --secondaryAccent: #9ee06f;
+  --glow-accent: rgba(243, 201, 63, 0.24);
+  --glowAccent: rgba(243, 201, 63, 0.24);
+  --success: #90e097;
+  --warning: #f3c93f;
+  --danger: #ff816f;
+  --table-header: rgba(6, 8, 6, 0.58);
+  --tableHeaderBackground: rgba(6, 8, 6, 0.58);
+  --table-row: rgba(23, 26, 18, 0.76);
+  --tableRowBackground: rgba(23, 26, 18, 0.76);
+  --table-row-hover: rgba(62, 68, 41, 0.52);
+  --tableRowHover: rgba(62, 68, 41, 0.52);
+  --radius-panel: 0.65rem;
+  --radius-control: 0.45rem;
+  --shadow-panel: 0 28px 80px rgba(14, 18, 12, 0.52);
+  --shadow-glow: 0 12px 30px rgba(243, 201, 63, 0.16);
+}
+
+:root[data-theme='frost'] {
+  font-family:
+    "Pretendard",
+    "SUIT",
+    "Inter",
+    "Segoe UI",
+    "Malgun Gothic",
+    "Apple SD Gothic Neo",
+    sans-serif;
+  color: #1a2633;
+  background:
+    radial-gradient(circle at 74% 8%, rgba(105, 193, 214, 0.28), transparent 30%),
+    radial-gradient(circle at 20% 96%, rgba(155, 181, 210, 0.26), transparent 26%),
+    linear-gradient(135deg, #f5f8fb, #dce7ef);
+  --ink: #172432;
+  --titleText: #172432;
+  --muted: #667789;
+  --mutedText: #667789;
+  --body-text: #253544;
+  --bodyText: #253544;
+  --appBackground: #eef4f8;
+  --appBackgroundGradientStart: #f5f8fb;
+  --appBackgroundGradientEnd: #dce7ef;
+  --sidebarBackground: rgba(255, 255, 255, 0.76);
+  --panel: rgba(255, 255, 255, 0.82);
+  --panelBackground: rgba(255, 255, 255, 0.82);
+  --panel-soft: rgba(231, 240, 246, 0.92);
+  --panelBackgroundSoft: rgba(231, 240, 246, 0.92);
+  --panel-glass: rgba(255, 255, 255, 0.66);
+  --panelBackgroundGlass: rgba(255, 255, 255, 0.66);
+  --panel-border: rgba(82, 113, 144, 0.2);
+  --borderDefault: rgba(82, 113, 144, 0.2);
+  --panel-border-strong: rgba(47, 140, 164, 0.44);
+  --borderStrong: rgba(47, 140, 164, 0.44);
+  --accent: #2f8ca4;
+  --primaryAccent: #2f8ca4;
+  --accent-secondary: #436f96;
+  --secondaryAccent: #436f96;
+  --glow-accent: rgba(47, 140, 164, 0.18);
+  --glowAccent: rgba(47, 140, 164, 0.18);
+  --success: #1f806a;
+  --warning: #a76b12;
+  --danger: #b94a4a;
+  --table-header: rgba(231, 240, 246, 0.92);
+  --tableHeaderBackground: rgba(231, 240, 246, 0.92);
+  --table-row: rgba(255, 255, 255, 0.66);
+  --tableRowBackground: rgba(255, 255, 255, 0.66);
+  --table-row-hover: rgba(219, 241, 246, 0.76);
+  --tableRowHover: rgba(219, 241, 246, 0.76);
+  --radius-panel: 1rem;
+  --radius-control: 0.75rem;
+  --shadow-panel: 0 30px 80px rgba(72, 91, 112, 0.24);
+  --shadow-glow: 0 18px 44px rgba(47, 140, 164, 0.16);
 }
 
 * {
@@ -28,6 +341,48 @@ body {
   min-height: 100vh;
 }
 
+:root[data-theme='premium'] body {
+  background: #060b12;
+  color: var(--body-text);
+}
+
+:root[data-theme='hud'] body {
+  background: #07101a;
+  color: var(--body-text);
+}
+
+:root[data-theme='mono'] body,
+:root[data-theme='pit'] body,
+:root[data-theme='frost'] body {
+  background: var(--appBackground);
+  color: var(--body-text);
+}
+
+:root[data-theme='premium'] body::before,
+:root[data-theme='hud'] body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(rgba(120, 180, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(120, 180, 255, 0.025) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.5), transparent 72%);
+  opacity: 0.42;
+}
+
+:root[data-theme='hud'] body::before {
+  background:
+    linear-gradient(rgba(89, 225, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(89, 225, 255, 0.04) 1px, transparent 1px),
+    radial-gradient(circle at 50% 10%, rgba(89, 225, 255, 0.18), transparent 24%),
+    linear-gradient(90deg, transparent 28%, rgba(89, 225, 255, 0.13) 30%, transparent 32%, transparent 68%, rgba(89, 225, 255, 0.12) 70%, transparent 72%);
+  background-size: 46px 46px, 46px 46px, 100% 100%, 100% 100%;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.64), transparent 78%);
+  opacity: 0.72;
+}
+
 a {
   color: inherit;
   text-decoration: none;
@@ -38,13 +393,28 @@ a {
   padding: 2rem;
 }
 
+:root[data-theme='premium'] #root {
+  padding: 1.25rem;
+}
+
+:root[data-theme='hud'] #root {
+  padding: 1.25rem;
+}
+
+:root[data-theme='mono'] #root,
+:root[data-theme='pit'] #root,
+:root[data-theme='frost'] #root {
+  padding: 1.25rem;
+}
+
 h1,
 h2,
 h3 {
   color: var(--ink);
+  letter-spacing: 0;
 }
 
 p,
 li {
-  color: var(--ink);
+  color: var(--body-text);
 }

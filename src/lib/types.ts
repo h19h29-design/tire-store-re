@@ -21,6 +21,12 @@ export type BackupResult = {
   createdAt: string
 }
 
+export type DatabaseBackupPayload = {
+  fileName: string
+  exportedAt: string
+  databaseBase64: string
+}
+
 export type InventorySeedItem = {
   skuCode: string
   brandName: string
@@ -284,6 +290,7 @@ export type DashboardSummary = {
 
 export type DashboardBreakdownRow = {
   label: string
+  patternName?: string
   quantity: number
   amount: number
 }
@@ -588,6 +595,8 @@ export type PlateLookupRow = {
 export type CustomerVisitRow = {
   saleId: number
   soldAt: string
+  plateNumber: string
+  vehicleModel: string
   tireQuantity: number
   totalAmount: number
   cardAmount: number
@@ -595,5 +604,6 @@ export type CustomerVisitRow = {
   naverAmount: number
   alignmentAmount: number
   serviceAmount: number
+  workSummary: string
   memo: string
 }

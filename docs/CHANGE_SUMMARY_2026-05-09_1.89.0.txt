@@ -1,0 +1,25 @@
+# Tire Store 1.89.0 변경 요약
+
+작성일: 2026-05-09
+
+## 변경 내용
+- 대시보드 `선택 월 상세 판매 내역` 테이블에 전용 스타일 범위를 추가했습니다.
+- 승인된 초압축 목업 기준으로 해당 테이블의 행 높이, 보조 텍스트 줄간격, 수정/삭제 버튼 높이만 줄였습니다.
+- 공통 `.data-table` 기본 스타일은 유지해 다른 화면 테이블에는 영향이 없도록 했습니다.
+- 앱/서버 표시 버전을 1.89.0으로 올렸습니다.
+
+## 배포 산출물
+- 수동 설치 파일: `C:\Users\h19h2\Downloads\tire-store-local-1.89.0-setup.exe`
+- 수동 설치 서명: `C:\Users\h19h2\Downloads\tire-store-local-1.89.0-setup.exe.sig`
+- 서버 업로드용 자동업데이트 zip: `C:\Users\h19h2\Downloads\tire-store-local-1.89.0-auto-update.zip`
+
+## 검증
+- `npm run release:check-version` 통과
+- `npm run build` 통과
+- `npm run tauri:build -- --bundles nsis --ci` 통과
+- 자동업데이트 zip에서 `1.89.0` 설치 파일과 `.sig` 추출 확인
+- `npm run lint` 통과
+
+## 주의
+- 첫 번째 `npm run tauri:build`는 signing private key 환경변수가 없어 `.sig` 생성 단계에서 실패했습니다.
+- 이후 `C:\Users\h19h2\.tire-store\updater` 키를 환경변수로 주입해 NSIS 서명 빌드를 재실행했고 최종 산출물은 정상 생성됐습니다.

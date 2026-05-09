@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "1.6.1"
+version = "1.89.0"
 description = "A Tauri App"
 authors = ["you"]
 license = ""
@@ -19,6 +19,7 @@ tauri-build = { version = "2.5.6", features = [] }
 
 [dependencies]
 calamine = "0.34.0"
+base64 = "0.22"
 chrono = { version = "0.4.44", default-features = false, features = ["clock"] }
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
@@ -30,3 +31,4 @@ tauri-plugin-log = "2"
 tauri-plugin-process = "2.3.1"
 tauri-plugin-sql = { version = "2.3.2", features = ["sqlite"] }
 tauri-plugin-updater = "2.10.1"
+windows-dpapi = "0.2.0"

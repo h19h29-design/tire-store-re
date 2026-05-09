@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import type {
   BackupResult,
+  DatabaseBackupPayload,
   ImportFileHints,
   InitialImportResult,
   ParsedInventoryWorkbook,
@@ -46,6 +47,30 @@ export function createBackup() {
 
 export function createBackupAt(destinationPath: string) {
   return invoke<BackupResult>('create_backup_at', { destinationPath })
+}
+
+export function exportDatabaseBackupPayload() {
+  return invoke<DatabaseBackupPayload>('export_database_backup_payload')
+}
+
+export function restoreDatabaseFromBase64(databaseBase64: string) {
+  return invoke<BackupResult>('restore_database_from_base64', { databaseBase64 })
+}
+
+export function savePlatformSecret(platformCode: string, secret: string) {
+  return invoke<void>('save_platform_secret', { platformCode, secret })
+}
+
+export function getPlatformSecret(platformCode: string) {
+  return invoke<string | null>('get_platform_secret', { platformCode })
+}
+
+export function deletePlatformSecret(platformCode: string) {
+  return invoke<void>('delete_platform_secret', { platformCode })
+}
+
+export function hasPlatformSecret(platformCode: string) {
+  return invoke<boolean>('has_platform_secret', { platformCode })
 }
 
 export function parseInventoryWorkbook(path: string) {

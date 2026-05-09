@@ -1,0 +1,561 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tire Store Theme Mockups 1.81.0</title>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;700;900&family=Orbitron:wght@600;700&family=Rajdhani:wght@500;600;700&display=swap');
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: #ece9e2;
+        color: #161616;
+        font-family: 'Noto Sans KR', system-ui, sans-serif;
+      }
+
+      .page {
+        padding: 28px;
+      }
+
+      .title {
+        margin: 0 0 20px;
+        font-size: 26px;
+        font-weight: 900;
+        letter-spacing: 0;
+      }
+
+      .themes {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 22px;
+      }
+
+      .theme {
+        min-width: 0;
+      }
+
+      .theme-name {
+        margin: 0 0 10px;
+        font-size: 18px;
+        font-weight: 800;
+      }
+
+      .app {
+        display: grid;
+        grid-template-columns: 148px minmax(0, 1fr);
+        height: 840px;
+        overflow: hidden;
+        border: 1px solid rgba(0, 0, 0, 0.12);
+        border-radius: 18px;
+        box-shadow: 0 22px 46px rgba(22, 20, 16, 0.16);
+      }
+
+      .side {
+        padding: 24px 18px;
+      }
+
+      .eyebrow {
+        margin: 0 0 12px;
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .brand {
+        margin: 0 0 6px;
+        font-size: 29px;
+        line-height: 1.1;
+        font-weight: 900;
+      }
+
+      .version {
+        margin: 0 0 22px;
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .nav {
+        display: grid;
+        gap: 10px;
+      }
+
+      .nav span {
+        display: block;
+        padding: 11px 14px;
+        border-radius: 12px;
+        font-size: 14px;
+        font-weight: 700;
+      }
+
+      .main {
+        padding: 24px;
+      }
+
+      .topbar {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        align-items: flex-start;
+        margin-bottom: 18px;
+      }
+
+      .section-label {
+        margin: 0 0 10px;
+        font-size: 12px;
+        font-weight: 900;
+      }
+
+      h2 {
+        margin: 0;
+        font-size: 28px;
+        line-height: 1.16;
+        font-weight: 900;
+      }
+
+      .pill {
+        white-space: nowrap;
+        border-radius: 999px;
+        padding: 10px 13px;
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+        margin-bottom: 14px;
+      }
+
+      .stat,
+      .panel {
+        border-radius: 14px;
+        padding: 15px;
+      }
+
+      .stat span {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 11px;
+        font-weight: 800;
+      }
+
+      .stat strong {
+        font-size: 22px;
+        font-weight: 900;
+      }
+
+      .panel {
+        margin-bottom: 14px;
+      }
+
+      .panel h3 {
+        margin: 0 0 12px;
+        font-size: 18px;
+        font-weight: 900;
+      }
+
+      .work-card {
+        display: grid;
+        grid-template-columns: 82px 1fr 72px;
+        align-items: center;
+        gap: 12px;
+        padding: 13px 0;
+        border-top: 1px solid currentColor;
+      }
+
+      .work-card:first-of-type {
+        border-top: 0;
+      }
+
+      .work-date {
+        font-size: 12px;
+        line-height: 1.4;
+        font-weight: 800;
+      }
+
+      .work-main strong {
+        display: block;
+        font-size: 14px;
+        margin-bottom: 4px;
+      }
+
+      .work-main span,
+      .work-pay {
+        font-size: 12px;
+      }
+
+      .button {
+        display: inline-block;
+        margin-top: 8px;
+        padding: 11px 16px;
+        border-radius: 12px;
+        font-weight: 900;
+        font-size: 13px;
+      }
+
+      .chart {
+        height: 120px;
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 9px;
+        align-items: end;
+      }
+
+      .bar {
+        border-radius: 8px 8px 3px 3px;
+      }
+
+      .pit {
+        font-family: 'Noto Sans KR', system-ui, sans-serif;
+      }
+
+      .pit .app {
+        background: #151719;
+        color: #f4f1e8;
+        border-color: #2e3338;
+      }
+
+      .pit .side {
+        background: #0d0f10;
+        border-right: 1px solid #2b3034;
+      }
+
+      .pit .brand,
+      .pit h2,
+      .pit .stat strong {
+        font-family: 'Rajdhani', 'Noto Sans KR', sans-serif;
+      }
+
+      .pit .eyebrow,
+      .pit .version,
+      .pit .section-label {
+        color: #e2a23a;
+      }
+
+      .pit .nav span {
+        background: #1f2327;
+        color: #cdd2d6;
+      }
+
+      .pit .nav .active,
+      .pit .button {
+        background: #e2a23a;
+        color: #111;
+      }
+
+      .pit .pill,
+      .pit .stat,
+      .pit .panel {
+        background: #202428;
+        border: 1px solid #32383d;
+      }
+
+      .pit .work-card {
+        border-color: rgba(255, 255, 255, 0.1);
+      }
+
+      .pit .work-main span,
+      .pit .work-pay {
+        color: #b5bdc3;
+      }
+
+      .pit .bar {
+        background: linear-gradient(180deg, #f1bd58, #8b5a18);
+      }
+
+      .gt .app {
+        background: #f5f2eb;
+        color: #18222d;
+        border-color: #d6c8ae;
+      }
+
+      .gt .side {
+        background: #ebe2d2;
+        border-right: 1px solid #d6c8ae;
+      }
+
+      .gt .brand,
+      .gt h2 {
+        font-family: 'Noto Sans KR', system-ui, sans-serif;
+        font-weight: 900;
+      }
+
+      .gt .eyebrow,
+      .gt .version,
+      .gt .section-label {
+        color: #9a6b2f;
+      }
+
+      .gt .nav span {
+        background: #fffaf2;
+        color: #253241;
+      }
+
+      .gt .nav .active,
+      .gt .button {
+        background: #0f3a52;
+        color: #fff;
+      }
+
+      .gt .pill,
+      .gt .stat,
+      .gt .panel {
+        background: #fffcf5;
+        border: 1px solid #e2d5bd;
+      }
+
+      .gt .work-card {
+        border-color: rgba(50, 35, 18, 0.12);
+      }
+
+      .gt .work-main span,
+      .gt .work-pay {
+        color: #6a6258;
+      }
+
+      .gt .bar {
+        background: linear-gradient(180deg, #0f3a52, #c0a46c);
+      }
+
+      .apex {
+        font-family: 'IBM Plex Sans KR', system-ui, sans-serif;
+      }
+
+      .apex .app {
+        background: #f7f7f5;
+        color: #111;
+        border-color: #d8d8d4;
+      }
+
+      .apex .side {
+        background: #ffffff;
+        border-right: 1px solid #ddd;
+      }
+
+      .apex .brand,
+      .apex h2,
+      .apex .stat strong {
+        font-family: 'Orbitron', 'IBM Plex Sans KR', sans-serif;
+      }
+
+      .apex .eyebrow,
+      .apex .version,
+      .apex .section-label {
+        color: #d22c28;
+      }
+
+      .apex .nav span {
+        background: #f0f0ed;
+        color: #151515;
+      }
+
+      .apex .nav .active,
+      .apex .button {
+        background: #d22c28;
+        color: #fff;
+      }
+
+      .apex .pill,
+      .apex .stat,
+      .apex .panel {
+        background: #ffffff;
+        border: 1px solid #deded8;
+      }
+
+      .apex .work-card {
+        border-color: rgba(0, 0, 0, 0.1);
+      }
+
+      .apex .work-main span,
+      .apex .work-pay {
+        color: #5d5d5a;
+      }
+
+      .apex .bar {
+        background: linear-gradient(180deg, #d22c28, #111);
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <h1 class="title">타이어 매장 관리 테마 목업 3안</h1>
+      <section class="themes">
+        <article class="theme pit">
+          <h2 class="theme-name">1. Pit Lane Graphite</h2>
+          <div class="app">
+            <aside class="side">
+              <p class="eyebrow">TIRE OPS</p>
+              <h3 class="brand">매장 운영 데스크</h3>
+              <p class="version">버전 1.81</p>
+              <nav class="nav">
+                <span>대시보드</span>
+                <span class="active">판매</span>
+                <span>재고</span>
+                <span>고객 / 차량</span>
+                <span>백업 / 복원</span>
+                <span>업데이트</span>
+              </nav>
+            </aside>
+            <section class="main">
+              <div class="topbar">
+                <div>
+                  <p class="section-label">고객 / 차량</p>
+                  <h2>36로3232 정비 이력</h2>
+                </div>
+                <span class="pill">오늘 판매 1건</span>
+              </div>
+              <div class="stats">
+                <div class="stat"><span>최근 매출</span><strong>167,000</strong></div>
+                <div class="stat"><span>타이어</span><strong>1개</strong></div>
+                <div class="stat"><span>방문</span><strong>5회</strong></div>
+              </div>
+              <div class="panel">
+                <h3>작업 이력</h3>
+                <div class="work-card">
+                  <div class="work-date">2026-05-07<br />14:32</div>
+                  <div class="work-main"><strong>타이어 금호 엑스타LX / 215 50 17 / 1개</strong><span>네이버 결제, 고객 요청 메모</span></div>
+                  <div class="work-pay">167,000원</div>
+                </div>
+                <div class="work-card">
+                  <div class="work-date">2026-04-12<br />11:05</div>
+                  <div class="work-main"><strong>얼라이먼트 / 위치교환</strong><span>핸들 쏠림 점검</span></div>
+                  <div class="work-pay">40,000원</div>
+                </div>
+                <span class="button">판매 저장</span>
+              </div>
+              <div class="panel">
+                <h3>월간 흐름</h3>
+                <div class="chart">
+                  <div class="bar" style="height: 42%"></div>
+                  <div class="bar" style="height: 70%"></div>
+                  <div class="bar" style="height: 56%"></div>
+                  <div class="bar" style="height: 84%"></div>
+                  <div class="bar" style="height: 62%"></div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </article>
+
+        <article class="theme gt">
+          <h2 class="theme-name">2. Grand Touring Ivory</h2>
+          <div class="app">
+            <aside class="side">
+              <p class="eyebrow">TIRE STORE</p>
+              <h3 class="brand">프리미엄 매장 관리</h3>
+              <p class="version">버전 1.81</p>
+              <nav class="nav">
+                <span>대시보드</span>
+                <span class="active">판매</span>
+                <span>재고</span>
+                <span>고객 / 차량</span>
+                <span>백업 / 복원</span>
+                <span>업데이트</span>
+              </nav>
+            </aside>
+            <section class="main">
+              <div class="topbar">
+                <div>
+                  <p class="section-label">판매</p>
+                  <h2>정돈된 매출 관리</h2>
+                </div>
+                <span class="pill">최신 버전</span>
+              </div>
+              <div class="stats">
+                <div class="stat"><span>총 결제</span><strong>1,240,000</strong></div>
+                <div class="stat"><span>카드</span><strong>620,000</strong></div>
+                <div class="stat"><span>현금</span><strong>320,000</strong></div>
+              </div>
+              <div class="panel">
+                <h3>최근 작업</h3>
+                <div class="work-card">
+                  <div class="work-date">2026-05-07<br />15:18</div>
+                  <div class="work-main"><strong>미쉐린 Primacy / 245 45 18 / 4개</strong><span>G80, 얼라이먼트 포함</span></div>
+                  <div class="work-pay">780,000원</div>
+                </div>
+                <div class="work-card">
+                  <div class="work-date">2026-05-06<br />09:20</div>
+                  <div class="work-main"><strong>공기압 점검 / 위치교환</strong><span>고객 재방문 예약</span></div>
+                  <div class="work-pay">20,000원</div>
+                </div>
+                <span class="button">고객 이력 보기</span>
+              </div>
+              <div class="panel">
+                <h3>규격별 판매</h3>
+                <div class="chart">
+                  <div class="bar" style="height: 36%"></div>
+                  <div class="bar" style="height: 64%"></div>
+                  <div class="bar" style="height: 78%"></div>
+                  <div class="bar" style="height: 58%"></div>
+                  <div class="bar" style="height: 46%"></div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </article>
+
+        <article class="theme apex">
+          <h2 class="theme-name">3. Apex Clean Red</h2>
+          <div class="app">
+            <aside class="side">
+              <p class="eyebrow">APEX DESK</p>
+              <h3 class="brand">타이어 매장 관리</h3>
+              <p class="version">버전 1.81</p>
+              <nav class="nav">
+                <span>대시보드</span>
+                <span class="active">판매</span>
+                <span>재고</span>
+                <span>고객 / 차량</span>
+                <span>백업 / 복원</span>
+                <span>업데이트</span>
+              </nav>
+            </aside>
+            <section class="main">
+              <div class="topbar">
+                <div>
+                  <p class="section-label">DASHBOARD</p>
+                  <h2>빠른 판매 입력</h2>
+                </div>
+                <span class="pill">검색 즉시 추가</span>
+              </div>
+              <div class="stats">
+                <div class="stat"><span>품목</span><strong>3</strong></div>
+                <div class="stat"><span>수량</span><strong>6</strong></div>
+                <div class="stat"><span>합계</span><strong>940K</strong></div>
+              </div>
+              <div class="panel">
+                <h3>작업 목록</h3>
+                <div class="work-card">
+                  <div class="work-date">2026-05-07<br />16:01</div>
+                  <div class="work-main"><strong>콘티넨탈 UC7 / 235 55 19 / 2개</strong><span>카드 결제, 앞타이어 교체</span></div>
+                  <div class="work-pay">360,000원</div>
+                </div>
+                <div class="work-card">
+                  <div class="work-date">2026-05-07<br />16:24</div>
+                  <div class="work-main"><strong>엔진오일 / 브레이크 점검</strong><span>추가 작업비 저장</span></div>
+                  <div class="work-pay">90,000원</div>
+                </div>
+                <span class="button">업데이트 확인</span>
+              </div>
+              <div class="panel">
+                <h3>결제 흐름</h3>
+                <div class="chart">
+                  <div class="bar" style="height: 72%"></div>
+                  <div class="bar" style="height: 44%"></div>
+                  <div class="bar" style="height: 88%"></div>
+                  <div class="bar" style="height: 52%"></div>
+                  <div class="bar" style="height: 66%"></div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>

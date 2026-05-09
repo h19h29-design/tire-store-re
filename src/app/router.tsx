@@ -6,6 +6,8 @@ import { ImportsPage } from '../features/imports/ImportsPage'
 import { InventoryPage } from '../features/inventory/InventoryPage'
 import { SalesPage } from '../features/sales/SalesPage'
 import { SettingsPage } from '../features/settings/SettingsPage'
+import { BackupRestorePage } from '../features/settings/BackupRestorePage'
+import { UpdatePage } from '../features/settings/UpdatePage'
 import { AppShell } from './shell/AppShell'
 import { isDesktopApp } from '../lib/platform'
 
@@ -23,6 +25,8 @@ const desktopRoutes = [
       { path: 'inventory', element: <InventoryPage /> },
       { path: 'customers', element: <CustomersPage /> },
       { path: 'imports', element: <ImportsPage /> },
+      { path: 'backups', element: <BackupRestorePage /> },
+      { path: 'updates', element: <UpdatePage /> },
       { path: 'settings', element: <SettingsPage /> },
     ],
   },
@@ -46,6 +50,8 @@ const webRoutes = [
       { path: 'inventory', element: <InventoryPage /> },
       { path: 'customers', element: <CustomersPage /> },
       { path: 'imports', element: <ImportsPage /> },
+      { path: 'backups', element: <BackupRestorePage /> },
+      { path: 'updates', element: <UpdatePage /> },
       { path: 'settings', element: <SettingsPage /> },
     ],
   },

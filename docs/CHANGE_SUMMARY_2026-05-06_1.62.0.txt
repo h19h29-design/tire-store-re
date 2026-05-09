@@ -1,0 +1,20 @@
+Tire Store 1.62 테스트 릴리즈 요약
+
+1. 버전 증가
+- 내부 배포 버전을 1.62.0으로 올렸습니다.
+- 앱 화면 표시는 1.62로 표시됩니다.
+
+2. 포함 변경
+- 1.61의 업데이트 탭 분리, ZIP 업로드 서버, 라이선스 임시 제거 변경을 포함합니다.
+- 추가 기능 변경 없이 서버 릴리즈 테스트용으로 버전만 증가했습니다.
+
+3. 검증
+- npm run release:check-version 통과
+- npm run build 통과
+- npm run lint 통과
+- cargo test 통과
+- npm run tauri:build는 설치파일 생성 후 updater 서명 private key 부재로 마지막 서명 단계에서 실패
+
+4. 주의
+- 자동 업데이트 서버 stable 업로드에는 `Tire Store_1.62.0_x64-setup.exe.sig`가 필요합니다.
+- 현재 환경에는 `TAURI_SIGNING_PRIVATE_KEY`가 없어 .sig 파일을 만들지 못했습니다.

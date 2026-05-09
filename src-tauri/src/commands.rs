@@ -1,3 +1,4 @@
+use base64::{engine::general_purpose, Engine as _};
 use calamine::{open_workbook_auto, Data, Range, Reader};
 use chrono::Local;
 use serde::Serialize;
@@ -9,6 +10,8 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Manager};
+
+const SECRET_ENTROPY: &[u8] = b"tire-store-platform-secret-v1";
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -39,6 +42,14 @@ pub struct RuntimeReadyResult {
 pub struct BackupResult {
     pub backup_path: String,
     pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DatabaseBackupPayload {
+    pub file_name: String,
+    pub exported_at: String,
+    pub database_base64: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -347,6 +358,54 @@ pub fn create_backup_at(app: AppHandle, destination_path: String) -> Result<Back
     Ok(BackupResult {
         backup_path: destination.display().to_string(),
         created_at: Local::now().to_rfc3339(),
+    })
+}
+
+#[tauri::command]
+pub fn export_database_backup_payload(app: AppHandle) -> Result<DatabaseBackupPayload, String> {
+    let db_path = database_path(&app)?;
+    if !db_path.exists() {
+        return Err("Database file does not exist yet".to_string());
+    }
+
+    let exported_at = Local::now();
+    let file_name = format!("tire-store-drive-backup-{}.tirebackup", exported_at.format("%Y%m%d-%H%M%S"));
+    let bytes = fs::read(&db_path).map_err(|error| error.to_string())?;
+
+    Ok(DatabaseBackupPayload {
+        file_name,
+        exported_at: exported_at.to_rfc3339(),
+        database_base64: general_purpose::STANDARD.encode(bytes),
+    })
+}
+
+#[tauri::command]
+pub fn restore_database_from_base64(app: AppHandle, database_base64: String) -> Result<BackupResult, String> {
+    let db_path = database_path(&app)?;
+    if let Some(parent) = db_path.parent() {
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+
+    let created_at = Local::now();
+    let backup_dir = preferred_backup_dir(&app).map_err(|error| error.to_string())?;
+    fs::create_dir_all(&backup_dir).map_err(|error| error.to_string())?;
+    let safety_backup = backup_dir.join(format!(
+        "tire-store-before-drive-restore-{}.db",
+        created_at.format("%Y%m%d-%H%M%S")
+    ));
+
+    if db_path.exists() {
+        fs::copy(&db_path, &safety_backup).map_err(|error| error.to_string())?;
+    }
+
+    let bytes = general_purpose::STANDARD
+        .decode(database_base64.as_bytes())
+        .map_err(|error| format!("Invalid backup data: {error}"))?;
+    fs::write(&db_path, bytes).map_err(|error| error.to_string())?;
+
+    Ok(BackupResult {
+        backup_path: safety_backup.display().to_string(),
+        created_at: created_at.to_rfc3339(),
     })
 }
 
@@ -2800,6 +2859,85 @@ fn database_path(app: &AppHandle) -> Result<PathBuf, String> {
         .map_err(|error| error.to_string())?;
     path.push("tire-store.db");
     Ok(path)
+}
+
+#[tauri::command]
+pub fn save_platform_secret(app: AppHandle, platform_code: String, secret: String) -> Result<(), String> {
+    let path = secret_path(&app, &platform_code)?;
+    let encrypted = protect_secret(secret.as_bytes())?;
+    fs::write(path, encrypted).map_err(|error| format!("Failed to save the platform secret: {error}"))
+}
+
+#[tauri::command]
+pub fn get_platform_secret(app: AppHandle, platform_code: String) -> Result<Option<String>, String> {
+    let path = secret_path(&app, &platform_code)?;
+    if !path.exists() {
+        return Ok(None);
+    }
+    let encrypted = fs::read(path).map_err(|error| format!("Failed to read the saved platform secret: {error}"))?;
+    let decrypted = unprotect_secret(&encrypted)?;
+    String::from_utf8(decrypted)
+        .map(Some)
+        .map_err(|_| "The saved platform secret is not valid UTF-8.".to_string())
+}
+
+#[tauri::command]
+pub fn delete_platform_secret(app: AppHandle, platform_code: String) -> Result<(), String> {
+    let path = secret_path(&app, &platform_code)?;
+    if path.exists() {
+        fs::remove_file(path).map_err(|error| format!("Failed to delete the saved platform secret: {error}"))?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn has_platform_secret(app: AppHandle, platform_code: String) -> Result<bool, String> {
+    Ok(secret_path(&app, &platform_code)?.exists())
+}
+
+fn secret_path(app: &AppHandle, platform_code: &str) -> Result<PathBuf, String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("Failed to resolve the app data directory: {error}"))?
+        .join("secrets");
+    fs::create_dir_all(&dir).map_err(|error| format!("Failed to create the secrets directory: {error}"))?;
+    Ok(dir.join(format!("{}.secret", sanitize_secret_code(platform_code))))
+}
+
+fn sanitize_secret_code(value: &str) -> String {
+    value
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.') {
+                character
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+#[cfg(windows)]
+fn protect_secret(bytes: &[u8]) -> Result<Vec<u8>, String> {
+    windows_dpapi::encrypt_data(bytes, windows_dpapi::Scope::User, Some(SECRET_ENTROPY))
+        .map_err(|error| format!("Failed to encrypt the platform secret with Windows DPAPI: {error}"))
+}
+
+#[cfg(windows)]
+fn unprotect_secret(bytes: &[u8]) -> Result<Vec<u8>, String> {
+    windows_dpapi::decrypt_data(bytes, windows_dpapi::Scope::User, Some(SECRET_ENTROPY))
+        .map_err(|error| format!("Failed to decrypt the platform secret with Windows DPAPI: {error}"))
+}
+
+#[cfg(not(windows))]
+fn protect_secret(_bytes: &[u8]) -> Result<Vec<u8>, String> {
+    Err("Platform secret storage is only supported on Windows.".to_string())
+}
+
+#[cfg(not(windows))]
+fn unprotect_secret(_bytes: &[u8]) -> Result<Vec<u8>, String> {
+    Err("Platform secret storage is only supported on Windows.".to_string())
 }
 
 fn preferred_backup_dir(app: &AppHandle) -> Result<PathBuf, std::io::Error> {

@@ -7,7 +7,7 @@ import {
   showValidationDialog,
   type FieldValidationMap,
 } from '../../lib/dialogs'
-import { formatMoney, scaleMoneyInputToWon } from '../../lib/normalize'
+import { formatMoney, getCurrentSeoulDateTimeValue, scaleMoneyInputToWon } from '../../lib/normalize'
 import type { InventoryListRow, PlateLookupRow } from '../../lib/types'
 import { searchInventoryItems } from '../inventory/inventoryService'
 import { getDiscountedPrice } from '../publicQuote/quoteUtils'
@@ -60,8 +60,38 @@ function formatDifferenceLabel(value: number) {
   return `${formatMoney(Math.abs(value))}원`
 }
 
+function getCurrentSaleDateValue() {
+  return getCurrentSeoulDateTimeValue().slice(0, 10)
+}
+
+function getCurrentSaleTimeValue() {
+  return getCurrentSeoulDateTimeValue().slice(11)
+}
+
+function normalizeSaleDateValue(value: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : getCurrentSaleDateValue()
+}
+
+function getSaleDateFromSoldAt(value: string) {
+  const match = value.match(/^(\d{4}-\d{2}-\d{2})/)
+  return match?.[1] ?? getCurrentSaleDateValue()
+}
+
+function getSaleTimeFromSoldAt(value: string) {
+  const match = value.match(/\d{2}:\d{2}:\d{2}$/)
+  return match?.[0] ?? getCurrentSaleTimeValue()
+}
+
+function formatSoldAtPayload(dateValue: string, timeValue: string) {
+  return `${normalizeSaleDateValue(dateValue)} ${timeValue || getCurrentSaleTimeValue()}`
+}
+
 function isLowStock(quantityAvailable: number, threshold: number) {
   return threshold > 0 && quantityAvailable > 0 && quantityAvailable <= threshold
+}
+
+function getSaleBasePrice(item: Pick<InventoryListRow, 'defaultCostPrice' | 'defaultSalePrice'>) {
+  return item.defaultSalePrice > 0 ? item.defaultSalePrice : item.defaultCostPrice
 }
 
 function isEditableElement(target: EventTarget | null) {
@@ -95,7 +125,7 @@ function resolveCartPricing(
       sum +
       (preserveExistingPricing
         ? line.lineTotalOverride ?? Math.max(0, line.unitPrice) * Math.max(0, line.quantity)
-        : getDiscountedPrice(line.defaultSalePrice, line.defaultDiscountRate) * Math.max(0, line.quantity)),
+        : getDiscountedPrice(getSaleBasePrice(line), line.defaultDiscountRate) * Math.max(0, line.quantity)),
     0,
   )
   const targetTireTotal =
@@ -119,7 +149,7 @@ function resolveCartPricing(
     return cart.map((line) => {
       const unitPrice = preserveExistingPricing
         ? Math.max(0, Math.round(line.unitPrice))
-        : getDiscountedPrice(line.defaultSalePrice, line.defaultDiscountRate)
+        : getDiscountedPrice(getSaleBasePrice(line), line.defaultDiscountRate)
       return {
         ...line,
         unitPrice,
@@ -156,6 +186,8 @@ export function SalesPage() {
   const [phone, setPhone] = useState('')
   const [plateNumber, setPlateNumber] = useState('')
   const [vehicleModel, setVehicleModel] = useState('')
+  const [saleDate, setSaleDate] = useState(() => getCurrentSaleDateValue())
+  const [saleTime, setSaleTime] = useState(() => getCurrentSaleTimeValue())
   const [odometer, setOdometer] = useState('')
   const [memo, setMemo] = useState('')
   const [cardAmount, setCardAmount] = useState('')
@@ -184,6 +216,8 @@ export function SalesPage() {
     setPhone('')
     setPlateNumber('')
     setVehicleModel('')
+    setSaleDate(getCurrentSaleDateValue())
+    setSaleTime(getCurrentSaleTimeValue())
     setOdometer('')
     setMemo('')
     setCardAmount('')
@@ -246,6 +280,8 @@ export function SalesPage() {
         setPhone(draft.phone)
         setPlateNumber(draft.plateNumber)
         setVehicleModel(draft.vehicleModel)
+        setSaleDate(getSaleDateFromSoldAt(draft.soldAt))
+        setSaleTime(getSaleTimeFromSoldAt(draft.soldAt))
         setOdometer(draft.odometer > 0 ? String(draft.odometer) : '')
         setMemo(draft.memo)
         setCardAmount(formatWonToInputAmount(draft.cardAmount))
@@ -273,6 +309,8 @@ export function SalesPage() {
         setPhone('')
         setPlateNumber('')
         setVehicleModel('')
+        setSaleDate(getCurrentSaleDateValue())
+        setSaleTime(getCurrentSaleTimeValue())
         setOdometer('')
         setMemo('')
         setCardAmount('')
@@ -376,6 +414,7 @@ export function SalesPage() {
         phone.trim() !== '' ||
         plateNumber.trim() !== '' ||
         vehicleModel.trim() !== '' ||
+        saleDate !== getCurrentSaleDateValue() ||
         odometer.trim() !== '' ||
         memo.trim() !== '' ||
         cardAmount.trim() !== '' ||
@@ -424,6 +463,7 @@ export function SalesPage() {
     plateNumber,
     query,
     resetSaleForm,
+    saleDate,
     serviceAmount,
     serviceDescription,
     vehicleModel,
@@ -448,7 +488,7 @@ export function SalesPage() {
         {
           ...item,
           quantity: item.quantityAvailable > 0 ? 1 : 0,
-          unitPrice: getDiscountedPrice(item.defaultSalePrice, item.defaultDiscountRate),
+          unitPrice: getDiscountedPrice(getSaleBasePrice(item), item.defaultDiscountRate),
           lineTotalOverride: null,
         },
       ]
@@ -514,16 +554,12 @@ export function SalesPage() {
   const totalAmount = tireTotal + alignmentServiceAmount + effectiveExtraServiceAmount
   const effectiveCardAmount = rawCardAmount
   const effectiveNaverAmount = rawNaverAmount
-  const effectiveCashAmount = hasManualCashAmount
-    ? rawCashAmount
-    : isEditMode
-      ? rawCashAmount
-      : Math.max(totalAmount - rawCardAmount - rawNaverAmount, 0)
+  const effectiveCashAmount = rawCashAmount
   const paymentTotal = effectiveCardAmount + effectiveNaverAmount + effectiveCashAmount
   const paymentDiff = paymentTotal - totalAmount
   const cardFeeAmount = Math.round(effectiveCardAmount * 0.03) + Math.round(effectiveNaverAmount * 0.05)
   const lowStockLabel = lowStockThreshold > 0 ? `${lowStockThreshold.toLocaleString('ko-KR')}개 이하` : '사용 안 함'
-  const requiresPaymentCheck = rawCardAmount + rawNaverAmount > totalAmount || (hasManualCashAmount && paymentDiff !== 0)
+  const requiresPaymentCheck = totalAmount > 0 && paymentDiff !== 0
 
   const activeFieldErrors: FieldValidationMap<SalesFieldKey> = { ...fieldErrors }
   const invalidQuantityKeys = new Set(
@@ -605,6 +641,7 @@ export function SalesPage() {
       setStatus(isEditMode ? '판매 수정 중입니다.' : '판매 저장 중입니다.')
 
       const payload = {
+        soldAt: formatSoldAtPayload(saleDate, saleTime),
         customerName,
         phone,
         plateNumber,
@@ -667,7 +704,7 @@ export function SalesPage() {
 
           <div className="result-list compact-result-list">
             {results.map((item) => {
-              const suggestedPrice = getDiscountedPrice(item.defaultSalePrice, item.defaultDiscountRate)
+              const suggestedPrice = getDiscountedPrice(getSaleBasePrice(item), item.defaultDiscountRate)
 
               return (
                 <button
@@ -786,6 +823,15 @@ export function SalesPage() {
 
           <div className="sales-form-section">
             <div className="form-grid sales-form-grid">
+              <label className="field">
+                <span>판매일</span>
+                <input
+                  onChange={(event) => setSaleDate(normalizeSaleDateValue(event.target.value))}
+                  type="date"
+                  value={saleDate}
+                />
+                <small className="field-hint">기본은 오늘이며 이전 날짜도 선택할 수 있습니다.</small>
+              </label>
               <label className="field">
                 <span>고객명</span>
                 <input onChange={(event) => setCustomerName(event.target.value)} value={customerName} />
@@ -919,12 +965,12 @@ export function SalesPage() {
                   data-field-error-target="sales-cash-amount"
                   inputMode="decimal"
                   onChange={(event) => setCashAmount(sanitizeAmountInput(event.target.value))}
-                  placeholder="비워두면 자동 현금"
+                  placeholder="0"
                   type="text"
                   value={cashAmount}
                 />
                 <small className="field-hint">
-                  {hasManualCashAmount ? getAmountFieldPreview(cashAmount) : `${formatMoney(effectiveCashAmount)}원 자동 반영`}
+                  {hasManualCashAmount ? getAmountFieldPreview(cashAmount) : '현금 결제액을 입력한 경우에만 반영됩니다.'}
                 </small>
               </label>
             </div>

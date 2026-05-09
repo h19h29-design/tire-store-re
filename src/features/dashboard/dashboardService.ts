@@ -62,6 +62,7 @@ type InventoryMetricsRow = {
 
 type RawSizeBreakdownRow = {
   sizeLabel: string
+  patternName: string
   quantity: number
   amount: number
 }
@@ -101,6 +102,12 @@ function normalizeNumber(value: unknown) {
   return Number(value ?? 0)
 }
 
+function effectiveSaleTotalSql(tablePrefix = '') {
+  const prefix = tablePrefix ? `${tablePrefix}.` : ''
+  const paymentAmount = `COALESCE(${prefix}card_amount, 0) + COALESCE(${prefix}naver_amount, 0) + COALESCE(${prefix}cash_amount, 0)`
+  return `CASE WHEN (${paymentAmount}) > 0 THEN (${paymentAmount}) ELSE COALESCE(${prefix}total_amount, 0) END`
+}
+
 function normalizeDiscountRate(value: unknown) {
   const numeric = Number(value ?? 0)
   if (!Number.isFinite(numeric)) {
@@ -112,7 +119,11 @@ function normalizeDiscountRate(value: unknown) {
 
 function sortBreakdownRows(rows: DashboardBreakdownRow[]) {
   return [...rows].sort(
-    (left, right) => right.amount - left.amount || right.quantity - left.quantity || left.label.localeCompare(right.label),
+    (left, right) =>
+      right.amount - left.amount ||
+      right.quantity - left.quantity ||
+      (left.patternName ?? '').localeCompare(right.patternName ?? '') ||
+      left.label.localeCompare(right.label),
   )
 }
 
@@ -325,7 +336,7 @@ async function loadSummaryByQuery(
     selectFirst<SummarySalesRow>(
       `SELECT
         COUNT(*) AS salesCount,
-        COALESCE(SUM(total_amount), 0) AS totalAmount,
+        COALESCE(SUM(${effectiveSaleTotalSql()}), 0) AS totalAmount,
         COALESCE(SUM(card_amount), 0) AS cardAmount,
         COALESCE(SUM(COALESCE(naver_amount, 0)), 0) AS naverAmount,
         COALESCE(SUM(cash_amount), 0) AS cashAmount,
@@ -391,7 +402,14 @@ async function loadHeadlineMetrics(todayValue: string, todaySummary: DashboardSu
       'expense_date < ?',
       [todayValue],
     ),
-    loadSummaryByQuery('1 = 1', [], '1 = 1', [], '1 = 1', []),
+    loadSummaryByQuery(
+      'SUBSTR(sold_at, 1, 10) <= ?',
+      [todayValue],
+      'SUBSTR(sales.sold_at, 1, 10) <= ?',
+      [todayValue],
+      'expense_date <= ?',
+      [todayValue],
+    ),
   ])
 
   return {
@@ -436,6 +454,7 @@ async function loadSizeBreakdown(rangeMode: DashboardRangeMode, value: string) {
   const rows = await selectRows<RawSizeBreakdownRow>(
     `SELECT
       COALESCE(NULLIF(items.size_label, ''), NULLIF(sale_lines.size_snapshot, ''), '미입력') AS sizeLabel,
+      COALESCE(NULLIF(items.pattern_name, ''), NULLIF(sale_lines.item_snapshot_name, ''), '미입력') AS patternName,
       sale_lines.quantity AS quantity,
       sale_lines.line_total AS amount
     FROM sale_lines
@@ -451,10 +470,12 @@ async function loadSizeBreakdown(rangeMode: DashboardRangeMode, value: string) {
   const aggregated = new Map<string, DashboardBreakdownRow>()
   for (const row of rows) {
     const label = standardizeSizeLabel(row.sizeLabel)
-    const current = aggregated.get(label) ?? { label, quantity: 0, amount: 0 }
+    const patternName = row.patternName?.trim() || '미입력'
+    const key = `${patternName}\u0000${label}`
+    const current = aggregated.get(key) ?? { label, patternName, quantity: 0, amount: 0 }
     current.quantity += normalizeNumber(row.quantity)
     current.amount += normalizeNumber(row.amount)
-    aggregated.set(label, current)
+    aggregated.set(key, current)
   }
 
   return sortBreakdownRows([...aggregated.values()])
@@ -475,7 +496,7 @@ async function loadRecentSales(rangeMode: DashboardRangeMode, value: string) {
         ELSE '-'
       END AS plateNumber,
       COALESCE(NULLIF(customers.name, ''), '미등록 고객') AS customerName,
-      sales.total_amount AS totalAmount,
+      ${effectiveSaleTotalSql('sales')} AS totalAmount,
       COALESCE(sales.card_amount, 0) AS cardAmount,
       COALESCE(sales.naver_amount, 0) AS naverAmount,
       COALESCE(sales.cash_amount, 0) AS cashAmount,
@@ -577,7 +598,7 @@ async function loadPeriodBuckets(rangeMode: DashboardRangeMode, value: string) {
       SELECT
         id,
         sold_at,
-        total_amount,
+        ${effectiveSaleTotalSql()} AS total_amount,
         card_amount,
         COALESCE(naver_amount, 0) AS naverAmount,
         cash_amount

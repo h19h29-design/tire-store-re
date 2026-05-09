@@ -1,40 +1,61 @@
 import { useEffect, useEffectEvent, useState } from 'react'
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { NavLink, Outlet } from 'react-router-dom'
+import { getVersion } from '@tauri-apps/api/app'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { ensureRuntimeReady } from '../../lib/desktop'
 import { isDesktopApp } from '../../lib/platform'
 import { ensureReferenceData } from '../../lib/referenceData'
 import { syncPublicQuoteFeedSilently } from '../../features/publicQuote/publicQuotePublishingService'
 import { DEFAULT_PUBLIC_QUOTE_PUBLISH_INTERVAL_MINUTES } from '../../features/publicQuote/quoteUtils'
-import {
-  createFallbackLicenseStatus,
-  fetchBillingLicenseStatus,
-  isLicenseBlocking,
-  loadBillingPreferences,
-} from '../../features/settings/licenseService'
 import { loadPublicQuotePreferences } from '../../features/settings/settingsService'
-import type { LicenseStatus } from '../../lib/types'
+import { runDriveAutoBackup } from '../../lib/backup/driveAutoSync'
+
+const text = {
+  dashboard: '\uB300\uC2DC\uBCF4\uB4DC',
+  sales: '\uD310\uB9E4',
+  inventory: '\uC7AC\uACE0',
+  customers: '\uACE0\uAC1D / \uCC28\uB7C9',
+  imports: '\uCD08\uAE30 \uAC00\uC838\uC624\uAE30',
+  backups: '\uBC31\uC5C5 / \uBCF5\uC6D0',
+  updates: '\uC5C5\uB370\uC774\uD2B8',
+  settings: '\uC124\uC815',
+  preparingRuntime: '\uB85C\uCEEC \uC2E4\uD589 \uD658\uACBD\uACFC \uB370\uC774\uD130\uBCA0\uC774\uC2A4\uB97C \uC900\uBE44\uD558\uACE0 \uC788\uC2B5\uB2C8\uB2E4.',
+  desktopOnly: '\uC774 \uD654\uBA74\uC740 \uB370\uC2A4\uD06C\uD1B1 \uC571\uC5D0\uC11C\uB9CC \uC0AC\uC6A9\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4.',
+  runtimeReady: '\uC2E4\uD589 \uC900\uBE44\uAC00 \uB05D\uB0AC\uC2B5\uB2C8\uB2E4.',
+  runtimeFailed: '\uC2E4\uD589 \uB370\uC774\uD130\uB97C \uC900\uBE44\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.',
+  loadingTitle: '\uC571\uC744 \uC900\uBE44\uD558\uACE0 \uC788\uC2B5\uB2C8\uB2E4',
+  errorTitle: '\uC571\uC744 \uC2DC\uC791\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4',
+  loadingHint: '\uB85C\uCEEC \uB370\uC774\uD130\uBCA0\uC774\uC2A4\uC640 \uAE30\uC900 \uB370\uC774\uD130\uB97C \uD655\uC778\uD558\uACE0 \uC788\uC2B5\uB2C8\uB2E4.',
+  desktopHint: '\uB9E4\uC7A5 \uAD00\uB9AC\uB294 \uB370\uC2A4\uD06C\uD1B1 \uC571\uC5D0\uC11C \uC9C4\uD589\uD574 \uC8FC\uC138\uC694.',
+  brandEyebrow: '\uD0C0\uC774\uC5B4 \uB9E4\uC7A5 \uAD00\uB9AC',
+  brandTitle: '\uB9E4\uC7A5 \uC6B4\uC601 \uB370\uC2A4\uD06C\uD1B1',
+  version: '\uBC84\uC804',
+  brandCopy:
+    '\uC7AC\uACE0, \uD310\uB9E4, \uACE0\uAC1D, \uCD08\uAE30\uB370\uC774\uD130 \uAC00\uC838\uC624\uAE30, \uBC31\uC5C5, \uACF5\uAC1C \uACAC\uC801 \uAD00\uB9AC\uAE4C\uC9C0 \uD55C \uD654\uBA74 \uD750\uB984\uC73C\uB85C \uC774\uC5B4\uC11C \uC0AC\uC6A9\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4.',
+  desktopMenu: '\uB370\uC2A4\uD06C\uD1B1 \uBA54\uB274',
+  checklistTitle: '\uD604\uC7AC \uD655\uC778\uD560 \uD56D\uBAA9',
+  checklistInventory: '\uC7AC\uACE0 \uC218\uB7C9\uACFC \uD488\uBAA9\uBCC4 \uD560\uC778\uC728\uC744 \uCD5C\uC2E0 \uC0C1\uD0DC\uB85C \uC720\uC9C0\uD569\uB2C8\uB2E4.',
+  checklistQuote: '\uD648\uD398\uC774\uC9C0\uC5D0 \uB178\uCD9C\uD558\uB294 \uD488\uBAA9\uB9CC \uACF5\uAC1C \uACAC\uC801 \uBAA9\uB85D\uC5D0 \uBC18\uC601\uD569\uB2C8\uB2E4.',
+  checklistConfirm:
+    '\uACAC\uC801 \uBB38\uC758 \uC774\uD6C4 \uCD5C\uC885 \uC7AC\uACE0\uC640 \uC791\uC5C5 \uAE08\uC561\uC740 \uB9E4\uC7A5\uC5D0\uC11C \uBC14\uB85C \uD655\uC815\uD569\uB2C8\uB2E4.',
+} as const
 
 const navItems = [
-  { to: '/app', label: '대시보드', end: true },
-  { to: '/app/sales', label: '판매' },
-  { to: '/app/inventory', label: '재고' },
-  { to: '/app/customers', label: '고객 / 차량' },
-  { to: '/app/imports', label: '초기 가져오기' },
-  { to: '/app/settings', label: '설정' },
+  { to: '/app', label: text.dashboard, end: true },
+  { to: '/app/sales', label: text.sales },
+  { to: '/app/inventory', label: text.inventory },
+  { to: '/app/customers', label: text.customers },
+  { to: '/app/imports', label: text.imports },
+  { to: '/app/backups', label: text.backups },
+  { to: '/app/updates', label: text.updates },
+  { to: '/app/settings', label: text.settings },
 ]
 
 export function AppShell() {
   const desktopApp = isDesktopApp()
-  const location = useLocation()
-  const navigate = useNavigate()
   const [runtimeState, setRuntimeState] = useState<'loading' | 'ready' | 'error'>(desktopApp ? 'loading' : 'error')
-  const [runtimeMessage, setRuntimeMessage] = useState(
-    desktopApp
-      ? '데스크톱 실행 환경과 로컬 데이터베이스를 준비하고 있습니다.'
-      : '이 화면은 데스크톱 매장 프로그램 안에서만 사용할 수 있습니다.',
-  )
-  const [licenseState, setLicenseState] = useState<LicenseStatus | null>(null)
-  const [licenseLoading, setLicenseLoading] = useState(false)
+  const [appVersion, setAppVersion] = useState('1.89.0')
+  const [runtimeMessage, setRuntimeMessage] = useState<string>(desktopApp ? text.preparingRuntime : text.desktopOnly)
 
   const handleQuotePublishTick = useEffectEvent(async () => {
     try {
@@ -45,75 +66,61 @@ export function AppShell() {
   })
 
   useEffect(() => {
-    if (!desktopApp) {
-      return
-    }
-
+    if (!desktopApp) return
     let active = true
-
-    void (async () => {
-      try {
-        const result = await ensureRuntimeReady()
-        await ensureReferenceData()
-
-        if (!active) {
-          return
-        }
-
-        setRuntimeState('ready')
-        const repairedMessages: string[] = []
-        if (result.costSnapshotBackfilledCount > 0) {
-          repairedMessages.push(
-            `누락된 원가 스냅샷 ${result.costSnapshotBackfilledCount.toLocaleString('ko-KR')}건을 복구했습니다.`,
-          )
-        }
-        if (result.dailyExpenseBackfilledCount > 0) {
-          repairedMessages.push(
-            `일일 지출내역 ${result.dailyExpenseBackfilledCount.toLocaleString('ko-KR')}건을 판매일보에서 다시 가져왔습니다.`,
-          )
-        }
-
-        setRuntimeMessage(
-          repairedMessages.length > 0 ? `실행 준비가 완료되었습니다. ${repairedMessages.join(' ')}` : '실행 준비가 완료되었습니다.',
-        )
-      } catch (error) {
-        console.error('Failed to initialize runtime data', error)
-
-        if (!active) {
-          return
-        }
-
-        setRuntimeState('error')
-        setRuntimeMessage(
-          error instanceof Error
-            ? error.message
-            : typeof error === 'string'
-              ? error
-              : '데스크톱 실행 준비 중 알 수 없는 오류가 발생했습니다.',
-        )
-      }
-    })()
-
+    void getVersion()
+      .then((version) => {
+        if (active) setAppVersion(version)
+      })
+      .catch(() => {
+        if (active) setAppVersion('1.89.0')
+      })
     return () => {
       active = false
     }
   }, [desktopApp])
 
   useEffect(() => {
-    if (!desktopApp || runtimeState !== 'ready') {
-      return
+    if (!desktopApp) return
+    let active = true
+    void (async () => {
+      try {
+        const result = await ensureRuntimeReady()
+        await ensureReferenceData()
+        if (!active) return
+        setRuntimeState('ready')
+        const repairedMessages: string[] = []
+        if (result.costSnapshotBackfilledCount > 0) {
+          repairedMessages.push(
+            `\uC6D0\uAC00 \uAE30\uB85D ${result.costSnapshotBackfilledCount.toLocaleString('ko-KR')}\uAC74\uC744 \uBCF5\uAD6C\uD588\uC2B5\uB2C8\uB2E4.`,
+          )
+        }
+        if (result.dailyExpenseBackfilledCount > 0) {
+          repairedMessages.push(
+            `\uC77C\uBCC4 \uC9C0\uCD9C ${result.dailyExpenseBackfilledCount.toLocaleString('ko-KR')}\uAC74\uC744 \uC7AC\uC815\uB9AC\uD588\uC2B5\uB2C8\uB2E4.`,
+          )
+        }
+        setRuntimeMessage(repairedMessages.length > 0 ? `${text.runtimeReady} ${repairedMessages.join(' ')}` : text.runtimeReady)
+      } catch (error) {
+        console.error('Failed to initialize runtime data', error)
+        if (!active) return
+        setRuntimeState('error')
+        setRuntimeMessage(error instanceof Error ? error.message : typeof error === 'string' ? error : text.runtimeFailed)
+      }
+    })()
+    return () => {
+      active = false
     }
+  }, [desktopApp])
 
+  useEffect(() => {
+    if (!desktopApp || runtimeState !== 'ready') return
     let active = true
     let timerId: number | null = null
-
     void (async () => {
       try {
         const preferences = await loadPublicQuotePreferences()
-        if (!active || !preferences.enabled || !preferences.publishEndpoint.trim()) {
-          return
-        }
-
+        if (!active || !preferences.enabled || !preferences.publishEndpoint.trim()) return
         await handleQuotePublishTick()
         timerId = window.setInterval(() => {
           void handleQuotePublishTick()
@@ -122,83 +129,52 @@ export function AppShell() {
         console.error('Failed to start quote publish timer', error)
       }
     })()
-
     return () => {
       active = false
-      if (timerId !== null) {
-        window.clearInterval(timerId)
-      }
+      if (timerId !== null) window.clearInterval(timerId)
     }
   }, [desktopApp, runtimeState])
 
   useEffect(() => {
-    if (!desktopApp || runtimeState !== 'ready') {
-      return
-    }
-
-    let active = true
-
-    async function syncLicenseState() {
-      try {
-        setLicenseLoading(true)
-        const preferences = await loadBillingPreferences()
-        if (!preferences.serverBaseUrl.trim() || !preferences.storeCode.trim()) {
-          if (active) {
-            setLicenseState(null)
-          }
-          return
-        }
-
-        const result = await fetchBillingLicenseStatus(preferences)
-        if (!active) {
-          return
-        }
-
-        setLicenseState(result.status)
-      } catch (error) {
-        console.error('Failed to sync billing license status', error)
-        if (!active) {
-          return
-        }
-
-        setLicenseState(
-          createFallbackLicenseStatus(error instanceof Error ? error.message : '라이선스 상태를 확인할 수 없습니다.'),
-        )
-      } finally {
-        if (active) {
-          setLicenseLoading(false)
-        }
-      }
-    }
-
-    void syncLicenseState()
-
-    const handler = () => {
-      void syncLicenseState()
-    }
-    window.addEventListener('billing-license-updated', handler)
-
-    return () => {
-      active = false
-      window.removeEventListener('billing-license-updated', handler)
-    }
+    if (!desktopApp || runtimeState !== 'ready') return
+    void runDriveAutoBackup('startup').catch((error) => {
+      console.error('Failed to run Google Drive startup backup', error)
+    })
   }, [desktopApp, runtimeState])
 
-  const isSettingsRoute = location.pathname === '/app/settings'
-  const shouldBlockApp = !licenseLoading && !isSettingsRoute && (!licenseState || isLicenseBlocking(licenseState))
+  useEffect(() => {
+    if (!desktopApp || runtimeState !== 'ready') return
+    let unlisten: (() => void) | null = null
+    void getCurrentWindow()
+      .onCloseRequested(async (event) => {
+        event.preventDefault()
+        try {
+          await runDriveAutoBackup('exit')
+        } catch (error) {
+          console.error('Failed to run Google Drive exit backup', error)
+        } finally {
+          await getCurrentWindow().destroy()
+        }
+      })
+      .then((dispose) => {
+        unlisten = dispose
+      })
+      .catch((error) => {
+        console.error('Failed to bind close backup handler', error)
+      })
+    return () => {
+      unlisten?.()
+    }
+  }, [desktopApp, runtimeState])
 
   if (runtimeState !== 'ready') {
     return (
       <div className="app-shell app-shell-loading">
         <section className="loading-panel">
-          <p className="eyebrow">타이어 매장 관리</p>
-          <h1>{runtimeState === 'loading' ? '프로그램을 준비하는 중입니다' : '프로그램을 열 수 없습니다'}</h1>
+          <p className="eyebrow">Tire Store</p>
+          <h1>{runtimeState === 'loading' ? text.loadingTitle : text.errorTitle}</h1>
           <p className="brand-copy">{runtimeMessage}</p>
-          <p className="loading-hint">
-            {runtimeState === 'loading'
-              ? '로컬 데이터베이스와 기준 데이터를 점검하고 있습니다.'
-              : '견적 사이트는 웹페이지에서, 매장 관리는 데스크톱 프로그램에서 이용해 주세요.'}
-          </p>
+          <p className="loading-hint">{runtimeState === 'loading' ? text.loadingHint : text.desktopHint}</p>
         </section>
       </div>
     )
@@ -208,64 +184,39 @@ export function AppShell() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand-block">
-          <p className="eyebrow">타이어 매장 관리</p>
-          <h1>매장 운영 데스크톱</h1>
-          <p className="brand-version">버전 1.5.0</p>
-          <p className="brand-copy">
-            재고, 판매, 고객, 초기데이터 가져오기, 백업, 공개 견적 관리까지 한 화면 흐름으로 이어서 사용할 수 있습니다.
+          <p className="eyebrow">{text.brandEyebrow}</p>
+          <h1>{text.brandTitle}</h1>
+          <p className="brand-version">
+            {text.version} {formatDisplayVersion(appVersion)}
           </p>
+          <p className="brand-copy">{text.brandCopy}</p>
         </div>
 
-        <nav aria-label="데스크톱 앱 메뉴" className="nav-list">
+        <nav aria-label={text.desktopMenu} className="nav-list">
           {navItems.map((item) => (
-            <NavLink
-              className={({ isActive }) => `nav-item${isActive ? ' is-active' : ''}`}
-              end={item.end}
-              key={item.to}
-              to={item.to}
-            >
+            <NavLink className={({ isActive }) => `nav-item${isActive ? ' is-active' : ''}`} end={item.end} key={item.to} to={item.to}>
               {item.label}
             </NavLink>
           ))}
         </nav>
 
         <section className="sidebar-panel">
-          <h2>현재 확인할 항목</h2>
+          <h2>{text.checklistTitle}</h2>
           <ul className="stack-list">
-            <li>재고 수량과 품목별 할인율을 최신 상태로 유지합니다.</li>
-            <li>홈페이지에 노출하는 품목만 공개 견적 목록에 반영합니다.</li>
-            <li>견적 문의 이후 최종 재고와 작업 금액은 매장에서 바로 확정합니다.</li>
+            <li>{text.checklistInventory}</li>
+            <li>{text.checklistQuote}</li>
+            <li>{text.checklistConfirm}</li>
           </ul>
         </section>
-
-        {licenseState ? (
-          <section className="sidebar-panel license-sidebar-panel">
-            <h2>라이선스</h2>
-            <p className="brand-copy">{licenseState.planName || '미설정'}</p>
-            <p className="brand-copy">{licenseState.message}</p>
-            <p className="brand-copy">
-              만료일 {licenseState.expiresAt ? new Date(licenseState.expiresAt).toLocaleDateString('ko-KR') : '-'}
-            </p>
-          </section>
-        ) : null}
       </aside>
 
       <main className="page-area">
-        {shouldBlockApp ? (
-          <section className="panel license-lock-panel">
-            <p className="eyebrow">라이선스 확인 필요</p>
-            <h2>현재 라이선스 상태로는 매장 기능을 사용할 수 없습니다.</h2>
-            <p className="page-copy">{licenseState?.message ?? '설정 화면에서 결제 또는 활성화를 진행해 주세요.'}</p>
-            <div className="button-row">
-              <button className="primary-button" onClick={() => navigate('/app/settings')} type="button">
-                설정으로 이동
-              </button>
-            </div>
-          </section>
-        ) : (
-          <Outlet />
-        )}
+        <Outlet />
       </main>
     </div>
   )
+}
+
+function formatDisplayVersion(version: string) {
+  return version.replace(/\.0$/, '')
 }

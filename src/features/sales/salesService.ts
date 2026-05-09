@@ -14,6 +14,7 @@ export type SaleDraftLine = InventoryListRow & {
 }
 
 export type SaveSaleInput = {
+  soldAt: string
   customerName: string
   phone: string
   plateNumber: string
@@ -137,6 +138,33 @@ function toSafeWholeNumber(value: number) {
     return 0
   }
   return Math.max(0, Math.floor(value))
+}
+
+function normalizeSoldAtInput(value: string, fallbackSoldAt = getCurrentSeoulDateTimeValue()) {
+  const trimmed = value.trim()
+  const fallbackTime = fallbackSoldAt.match(/\d{2}:\d{2}:\d{2}$/)?.[0] ?? getCurrentSeoulDateTimeValue().slice(11)
+  const match = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/)
+
+  if (!match) {
+    return fallbackSoldAt
+  }
+
+  const [, year, month, day, hour, minute, second] = match
+  const monthNumber = Number(month)
+  const dayNumber = Number(day)
+  const parsed = new Date(`${year}-${month}-${day}T00:00:00`)
+  const isValidDate =
+    Number.isFinite(parsed.getTime()) &&
+    parsed.getFullYear() === Number(year) &&
+    parsed.getMonth() + 1 === monthNumber &&
+    parsed.getDate() === dayNumber
+
+  if (!isValidDate) {
+    return fallbackSoldAt
+  }
+
+  const time = hour && minute ? `${hour}:${minute}:${second ?? '00'}` : fallbackTime
+  return `${year}-${month}-${day} ${time}`
 }
 
 function normalizeServiceDescription(value: string) {
@@ -452,7 +480,7 @@ export async function saveSale(input: SaveSaleInput) {
     const costPriceSnapshots = await loadCostPriceSnapshots(input.lines)
     const customerId = await ensureCustomer(input.customerName, input.phone)
     const vehicleId = await ensureVehicle(customerId, input.plateNumber, input.vehicleModel, odometer)
-    const soldAt = getCurrentSeoulDateTimeValue()
+    const soldAt = normalizeSoldAtInput(input.soldAt)
     const saleNumber = `SAL-${Date.now()}`
     const cardAmount = input.cardAmount
     const naverAmount = input.naverAmount
@@ -703,6 +731,7 @@ export async function updateSale(saleId: number, input: SaveSaleInput) {
   const costPriceSnapshots = await loadCostPriceSnapshots(input.lines)
   const customerId = await ensureCustomer(input.customerName, input.phone)
   const vehicleId = await ensureVehicle(customerId, input.plateNumber, input.vehicleModel, odometer)
+  const soldAt = normalizeSoldAtInput(input.soldAt, existingSale.soldAt)
   const cardAmount = input.cardAmount
   const naverAmount = input.naverAmount
   const cashAmount = input.cashAmount
@@ -720,6 +749,7 @@ export async function updateSale(saleId: number, input: SaveSaleInput) {
       customer_id = ?,
       vehicle_id = ?,
       total_amount = ?,
+      sold_at = ?,
       card_amount = ?,
       naver_amount = ?,
       cash_amount = ?,
@@ -732,6 +762,7 @@ export async function updateSale(saleId: number, input: SaveSaleInput) {
       customerId,
       vehicleId,
       totalAmount,
+      soldAt,
       cardAmount,
       naverAmount,
       cashAmount,
@@ -745,7 +776,7 @@ export async function updateSale(saleId: number, input: SaveSaleInput) {
   await insertSaleContents({
     saleId,
     saleNumber: existingSale.saleNumber,
-    soldAt: existingSale.soldAt,
+    soldAt,
     customerId,
     vehicleId,
     memo: input.memo,

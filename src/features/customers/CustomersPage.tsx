@@ -1,8 +1,8 @@
-import { useCallback, useDeferredValue, useEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useDeferredValue, useEffect, useRef, useState } from 'react'
 import { showErrorDialog, showMessageDialog } from '../../lib/dialogs'
 import { formatMoney } from '../../lib/normalize'
-import type { CustomerListRow, CustomerSearchFilters } from '../../lib/types'
-import { searchCustomers, updateCustomerVehicleRecord } from './customersService'
+import type { CustomerListRow, CustomerSearchFilters, CustomerVisitRow } from '../../lib/types'
+import { loadCustomerVisits, searchCustomers, updateCustomerVehicleRecord } from './customersService'
 
 const defaultFilters: CustomerSearchFilters = {
   query: '',
@@ -35,6 +35,20 @@ function formatReplacementDate(value: string | null) {
   return value ? value.slice(0, 10) : '-'
 }
 
+function formatSaleDateTime(value: string | null) {
+  return value ? value.replace('T', ' ').slice(0, 16) : '-'
+}
+
+function formatVisitPaymentSummary(visit: CustomerVisitRow) {
+  const parts = [
+    visit.cardAmount > 0 ? `카드 ${formatMoney(visit.cardAmount)}원` : '',
+    visit.naverAmount > 0 ? `네이버 ${formatMoney(visit.naverAmount)}원` : '',
+    visit.cashAmount > 0 ? `현금 ${formatMoney(visit.cashAmount)}원` : '',
+  ].filter(Boolean)
+
+  return parts.length > 0 ? parts.join(' / ') : '-'
+}
+
 function createEditForm(row: CustomerListRow) {
   return {
     customerName: row.customerName,
@@ -59,6 +73,10 @@ export function CustomersPage() {
   const [filters, setFilters] = useState(defaultFilters)
   const [rows, setRows] = useState<CustomerListRow[]>([])
   const [selectedRow, setSelectedRow] = useState<CustomerListRow | null>(null)
+  const [visitRows, setVisitRows] = useState<CustomerVisitRow[]>([])
+  const [visitLoading, setVisitLoading] = useState(false)
+  const [inlineVisitRowsByVehicleId, setInlineVisitRowsByVehicleId] = useState<Record<number, CustomerVisitRow[]>>({})
+  const [inlineVisitLoading, setInlineVisitLoading] = useState(false)
   const [editForm, setEditForm] = useState(defaultEditForm)
   const [status, setStatus] = useState('고객 / 차량 목록을 불러오는 중입니다.')
   const [saving, setSaving] = useState(false)
@@ -66,6 +84,7 @@ export function CustomersPage() {
   const refreshSequenceRef = useRef(0)
   const editPanelRef = useRef<HTMLElement | null>(null)
   const selectedRowId = selectedRow?.id ?? null
+  const selectedCustomerId = selectedRow?.customerId ?? null
 
   const refreshCustomers = useCallback(async (
     searchFilters = { ...filters, query: deferredQuery },
@@ -131,6 +150,81 @@ export function CustomersPage() {
       active = false
     }
   }, [deferredQuery, filters, refreshCustomers])
+
+  useEffect(() => {
+    let active = true
+
+    async function loadVisits() {
+      if (!selectedRowId) {
+        setVisitRows([])
+        setVisitLoading(false)
+        return
+      }
+
+      try {
+        setVisitLoading(true)
+        const visits = await loadCustomerVisits(selectedRowId, selectedCustomerId)
+        if (active) {
+          setVisitRows(visits)
+        }
+      } catch (error) {
+        console.error(error)
+        if (active) {
+          setVisitRows([])
+          setStatus('판매 이력을 불러오지 못했습니다.')
+        }
+      } finally {
+        if (active) {
+          setVisitLoading(false)
+        }
+      }
+    }
+
+    void loadVisits()
+    return () => {
+      active = false
+    }
+  }, [selectedCustomerId, selectedRowId])
+
+  useEffect(() => {
+    let active = true
+    const shouldLoadInlineVisits = deferredQuery.trim().length > 0 && rows.length > 0 && rows.length <= 20
+
+    async function loadInlineVisits() {
+      if (!shouldLoadInlineVisits) {
+        setInlineVisitRowsByVehicleId({})
+        setInlineVisitLoading(false)
+        return
+      }
+
+      try {
+        setInlineVisitLoading(true)
+        const entries = await Promise.all(
+          rows.map(async (row) => [row.id, await loadCustomerVisits(row.id, row.customerId)] as const),
+        )
+
+        if (active) {
+          setInlineVisitRowsByVehicleId(
+            Object.fromEntries(entries.map(([vehicleId, visits]) => [vehicleId, visits])),
+          )
+        }
+      } catch (error) {
+        console.error(error)
+        if (active) {
+          setInlineVisitRowsByVehicleId({})
+        }
+      } finally {
+        if (active) {
+          setInlineVisitLoading(false)
+        }
+      }
+    }
+
+    void loadInlineVisits()
+    return () => {
+      active = false
+    }
+  }, [deferredQuery, rows])
 
   useEffect(() => {
     function handleEscape(event: KeyboardEvent) {
@@ -247,43 +341,78 @@ export function CustomersPage() {
               <tr>
                 <th>차량번호 / 고객명</th>
                 <th>연락처</th>
-                <th>교체 날짜</th>
+                <th>최근 교체 날짜</th>
                 <th>주행거리(키로수)</th>
                 <th>최근 판매 내역</th>
-                <th>판매수량</th>
-                <th>매출금액</th>
-                <th>결제구분</th>
+                <th>최근 판매수량</th>
+                <th>최근 매출금액</th>
+                <th>최근 결제구분</th>
                 <th />
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
-                <tr key={row.id}>
-                  <td>
-                    <strong>{row.plateNumber || '차량번호 미입력'}</strong>
-                    <div style={secondaryTextStyle}>{row.customerName || '고객명 미입력'}</div>
-                  </td>
-                  <td>{row.phone || '-'}</td>
-                  <td>{formatReplacementDate(row.latestSaleAt)}</td>
-                  <td>{formatOdometer(row.odometer)}</td>
-                  <td>
-                    <strong>{row.latestTireSummary || '-'}</strong>
-                    <div style={secondaryTextStyle}>방문 {row.visitCount.toLocaleString('ko-KR')}회</div>
-                  </td>
-                  <td>{row.saleQuantity.toLocaleString('ko-KR')}</td>
-                  <td>{formatMoney(row.totalSaleAmount)}원</td>
-                  <td>
-                    <div>카드 {formatMoney(row.cardAmount)}원</div>
-                    <div style={secondaryTextStyle}>네이버 {formatMoney(row.naverAmount)}원</div>
-                    <div style={secondaryTextStyle}>현금 {formatMoney(row.cashAmount)}원</div>
-                  </td>
-                  <td>
-                    <button className="table-action" onClick={() => beginEdit(row)} type="button">
-                      수정
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {rows.map((row) => {
+                const inlineVisits = inlineVisitRowsByVehicleId[row.id] ?? []
+                const showInlineVisits =
+                  deferredQuery.trim().length > 0 && (inlineVisits.length > 1 || (inlineVisitLoading && row.visitCount > 1))
+
+                return (
+                  <Fragment key={row.id}>
+                    <tr>
+                      <td>
+                        <strong>{row.plateNumber || '차량번호 미입력'}</strong>
+                        <div style={secondaryTextStyle}>{row.customerName || '고객명 미입력'}</div>
+                      </td>
+                      <td>{row.phone || '-'}</td>
+                      <td>{formatReplacementDate(row.latestSaleAt)}</td>
+                      <td>{formatOdometer(row.odometer)}</td>
+                      <td>
+                        <strong>{row.latestTireSummary || '-'}</strong>
+                        <div style={secondaryTextStyle}>방문 {row.visitCount.toLocaleString('ko-KR')}회</div>
+                      </td>
+                      <td>{row.saleQuantity.toLocaleString('ko-KR')}</td>
+                      <td>{formatMoney(row.totalSaleAmount)}원</td>
+                      <td>
+                        <div>카드 {formatMoney(row.cardAmount)}원</div>
+                        <div style={secondaryTextStyle}>네이버 {formatMoney(row.naverAmount)}원</div>
+                        <div style={secondaryTextStyle}>현금 {formatMoney(row.cashAmount)}원</div>
+                      </td>
+                      <td>
+                        <button className="table-action" onClick={() => beginEdit(row)} type="button">
+                          수정
+                        </button>
+                      </td>
+                    </tr>
+                    {showInlineVisits ? (
+                      <tr className="customer-visit-inline-row">
+                        <td colSpan={9}>
+                          <div className="customer-visit-inline">
+                            <div className="customer-visit-inline-head">
+                              <strong>날짜별 방문 이력</strong>
+                              <span>{inlineVisitLoading ? '불러오는 중' : `${inlineVisits.length.toLocaleString('ko-KR')}건`}</span>
+                            </div>
+                            {inlineVisits.length > 0 ? (
+                              <div className="customer-visit-inline-list">
+                                {inlineVisits.map((visit) => (
+                                  <div className="customer-visit-inline-item" key={visit.saleId}>
+                                    <span>{formatSaleDateTime(visit.soldAt)}</span>
+                                    <strong>{visit.workSummary}</strong>
+                                    <span>타이어 {visit.tireQuantity.toLocaleString('ko-KR')}개</span>
+                                    <span>{formatMoney(visit.totalAmount)}원</span>
+                                    <span>{formatVisitPaymentSummary(visit)}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="customer-visit-inline-empty">방문 이력을 불러오는 중입니다.</p>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ) : null}
+                  </Fragment>
+                )
+              })}
               {rows.length === 0 ? (
                 <tr>
                   <td className="empty-cell" colSpan={9}>
@@ -302,12 +431,73 @@ export function CustomersPage() {
           <>
             <div className="selected-item-card">
               <strong>{selectedRow.plateNumber || '차량번호 미입력'}</strong>
-              <p>{selectedRow.latestTireSummary || '최근 판매 내역 없음'}</p>
+              <p>
+                {visitLoading
+                  ? '방문 이력을 불러오는 중입니다.'
+                  : visitRows.length > 0
+                    ? `날짜별 방문 이력 ${visitRows.length.toLocaleString('ko-KR')}건을 표시합니다.`
+                    : selectedRow.latestTireSummary || '최근 판매 내역 없음'}
+              </p>
               <div className="selected-item-meta">
                 <span>최근 교체 {formatReplacementDate(selectedRow.latestSaleAt)}</span>
                 <span>주행거리(키로수) {formatOdometer(selectedRow.odometer)}</span>
-                <span>얼라이먼트 {formatMoney(selectedRow.alignmentAmount)}원</span>
+                <span>
+                  방문 {(visitLoading ? selectedRow.visitCount : visitRows.length).toLocaleString('ko-KR')}회
+                </span>
               </div>
+            </div>
+
+            <div className="visit-history-heading">
+              <div>
+                <strong>날짜별 방문 이력</strong>
+                <span>방문 1건당 한 줄로 표시됩니다.</span>
+              </div>
+              <span>{visitLoading ? '불러오는 중' : `${visitRows.length.toLocaleString('ko-KR')}건`}</span>
+            </div>
+
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>판매일</th>
+                    <th>차량</th>
+                    <th>작업내역</th>
+                    <th>타이어 수량</th>
+                    <th>매출금액</th>
+                    <th>결제구분</th>
+                    <th>비고</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visitRows.map((visit) => (
+                    <tr key={visit.saleId}>
+                      <td>{formatSaleDateTime(visit.soldAt)}</td>
+                      <td>
+                        <strong>{visit.plateNumber || '-'}</strong>
+                        {visit.vehicleModel ? <div style={secondaryTextStyle}>{visit.vehicleModel}</div> : null}
+                      </td>
+                      <td>
+                        <strong>{visit.workSummary}</strong>
+                      </td>
+                      <td>{visit.tireQuantity.toLocaleString('ko-KR')}</td>
+                      <td>{formatMoney(visit.totalAmount)}원</td>
+                      <td>
+                        <div>카드 {formatMoney(visit.cardAmount)}원</div>
+                        <div style={secondaryTextStyle}>네이버 {formatMoney(visit.naverAmount)}원</div>
+                        <div style={secondaryTextStyle}>현금 {formatMoney(visit.cashAmount)}원</div>
+                      </td>
+                      <td>{visit.memo || '-'}</td>
+                    </tr>
+                  ))}
+                  {visitRows.length === 0 ? (
+                    <tr>
+                      <td className="empty-cell" colSpan={7}>
+                        {visitLoading ? '판매 이력을 불러오는 중입니다.' : '판매 이력이 없습니다.'}
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
             </div>
 
             <div className="form-grid">

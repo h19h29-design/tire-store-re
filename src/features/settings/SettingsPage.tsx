@@ -4,17 +4,14 @@ import { selectRows } from '../../lib/db'
 import { createBackupAt, getRuntimeInfo, refreshRuntimeReady } from '../../lib/desktop'
 import { showErrorDialog, showValidationDialog } from '../../lib/dialogs'
 import { ensureReferenceData, getReferenceDataSummary } from '../../lib/referenceData'
+import { APP_THEME_OPTIONS, getStoredAppTheme, setStoredAppTheme, type AppTheme } from '../../lib/theme'
 import type {
   BackupLogRow,
   BackupPreferences,
-  BillingPlanCode,
-  BillingPreferences,
   BrandDiscountRule,
-  LicenseStatus,
   ProductDiscountRule,
   PublicQuotePreferences,
   ReferenceDataSummary,
-  TestBillingCheckoutInput,
   RuntimeInfo,
 } from '../../lib/types'
 import { publishPublicQuoteFeed } from '../publicQuote/publicQuotePublishingService'
@@ -34,29 +31,6 @@ import {
   saveProductDiscountRules,
   savePublicQuotePreferences,
 } from './settingsService'
-import {
-  BILLING_PLANS,
-  DEFAULT_BILLING_SERVER_BASE_URL,
-  DEFAULT_DEVICE_NAME,
-  activateBillingLicense,
-  checkForLicenseServerUpdates,
-  createBillingCheckoutSession,
-  createFallbackLicenseStatus,
-  ensureBillingDeviceId,
-  fetchBillingLicenseStatus,
-  isLicenseBlocking,
-  isLicenseUsable,
-  loadBillingPreferences,
-  notifyLicenseStatusUpdated,
-  saveBillingPreferences,
-  type UpdateCheckResult,
-} from './licenseService'
-import {
-  checkTauriUpdater,
-  downloadInstallAndRelaunch,
-  type TauriUpdaterProgress,
-  type TauriUpdaterStatus,
-} from './updateService'
 
 const defaultBackupPreferences: BackupPreferences = {
   googleDriveAccountEmail: '',
@@ -86,27 +60,6 @@ const defaultPublicQuotePreferences: PublicQuotePreferences = {
   quoteNotice: DEFAULT_PUBLIC_QUOTE_NOTICE,
   lastPublishedAt: null,
   lastPublishError: '',
-}
-
-const defaultBillingPreferences: BillingPreferences = {
-  serverBaseUrl: DEFAULT_BILLING_SERVER_BASE_URL,
-  storeCode: '',
-  activationCode: '',
-  deviceId: '',
-  deviceName: DEFAULT_DEVICE_NAME,
-  checkoutMode: 'simulate',
-  tossClientKey: '',
-  tossSecretKey: '',
-  lastCheckoutUrl: '',
-  lastVerifiedAt: null,
-  cachedStatus: null,
-}
-
-const defaultTestBillingCheckoutInput: TestBillingCheckoutInput = {
-  storeName: '',
-  ownerName: '',
-  phone: '',
-  planCode: 'monthly',
 }
 
 function createBackupFileName() {
@@ -165,25 +118,6 @@ function normalizeDiscountRate(value: string) {
   return Math.max(0, Math.min(100, Math.round(numeric * 100) / 100))
 }
 
-function formatMoney(value: number) {
-  return `${Math.max(0, Math.round(value)).toLocaleString('ko-KR')}원`
-}
-
-function getLicenseStatusLabel(status: LicenseStatus['status']) {
-  switch (status) {
-    case 'active':
-      return '정상 사용'
-    case 'grace':
-      return '유예 기간'
-    case 'expired':
-      return '만료'
-    case 'suspended':
-      return '중지'
-    default:
-      return '미활성'
-  }
-}
-
 async function loadRecentBackups() {
   return selectRows<BackupLogRow>(
     `SELECT
@@ -201,12 +135,10 @@ async function loadRecentBackups() {
 export function SettingsPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [billingBusy, setBillingBusy] = useState(false)
-  const [updateBusy, setUpdateBusy] = useState(false)
-  const [installingUpdate, setInstallingUpdate] = useState(false)
   const [publishing, setPublishing] = useState(false)
   const [repairing, setRepairing] = useState(false)
   const [status, setStatus] = useState('설정 정보를 불러오는 중입니다.')
+  const [appTheme, setAppTheme] = useState<AppTheme>(() => getStoredAppTheme())
   const [runtimeInfo, setRuntimeInfo] = useState<RuntimeInfo | null>(null)
   const [referenceSummary, setReferenceSummary] = useState<ReferenceDataSummary>(defaultReferenceSummary)
   const [backupPreferences, setBackupPreferences] = useState<BackupPreferences>(defaultBackupPreferences)
@@ -214,14 +146,6 @@ export function SettingsPage() {
   const [productRules, setProductRules] = useState<ProductDiscountRule[]>([])
   const [publicQuotePreferences, setPublicQuotePreferences] =
     useState<PublicQuotePreferences>(defaultPublicQuotePreferences)
-  const [billingPreferences, setBillingPreferences] = useState<BillingPreferences>(defaultBillingPreferences)
-  const [licenseStatus, setLicenseStatus] = useState<LicenseStatus>(
-    createFallbackLicenseStatus('라이선스 서버를 아직 연결하지 않았습니다.'),
-  )
-  const [updateResult, setUpdateResult] = useState<UpdateCheckResult | null>(null)
-  const [tauriUpdateStatus, setTauriUpdateStatus] = useState<TauriUpdaterStatus | null>(null)
-  const [updateProgress, setUpdateProgress] = useState<TauriUpdaterProgress | null>(null)
-  const [testCheckoutInput, setTestCheckoutInput] = useState<TestBillingCheckoutInput>(defaultTestBillingCheckoutInput)
   const [recentBackups, setRecentBackups] = useState<BackupLogRow[]>([])
 
   useEffect(() => {
@@ -231,7 +155,6 @@ export function SettingsPage() {
       try {
         const [
           nextBackupPreferences,
-          nextBillingPreferences,
           nextBrandRules,
           nextProductRules,
           nextPublicQuotePreferences,
@@ -240,7 +163,6 @@ export function SettingsPage() {
           nextRecentBackups,
         ] = await Promise.all([
           loadBackupPreferences(),
-          loadBillingPreferences(),
           loadBrandDiscountRules(),
           loadProductDiscountRules(),
           loadPublicQuotePreferences(),
@@ -254,10 +176,6 @@ export function SettingsPage() {
         }
 
         setBackupPreferences(nextBackupPreferences)
-        setBillingPreferences(nextBillingPreferences)
-        setLicenseStatus(
-          nextBillingPreferences.cachedStatus ?? createFallbackLicenseStatus('라이선스 정보를 아직 확인하지 않았습니다.'),
-        )
         setBrandRules(nextBrandRules)
         setProductRules(nextProductRules)
         setPublicQuotePreferences(nextPublicQuotePreferences)
@@ -293,23 +211,17 @@ export function SettingsPage() {
       nextReferenceSummary,
       nextRecentBackups,
       nextPublicQuotePreferences,
-      nextBillingPreferences,
     ] = await Promise.all([
       getRuntimeInfo(),
       getReferenceDataSummary(),
       loadRecentBackups(),
       loadPublicQuotePreferences(),
-      loadBillingPreferences(),
     ])
 
     setRuntimeInfo(nextRuntimeInfo)
     setReferenceSummary(nextReferenceSummary)
     setRecentBackups(nextRecentBackups)
     setPublicQuotePreferences(nextPublicQuotePreferences)
-    setBillingPreferences(nextBillingPreferences)
-    setLicenseStatus(
-      nextBillingPreferences.cachedStatus ?? createFallbackLicenseStatus('라이선스 정보를 아직 확인하지 않았습니다.'),
-    )
   }
 
   function updateBackupPreferences<Key extends keyof BackupPreferences>(key: Key, value: BackupPreferences[Key]) {
@@ -329,22 +241,14 @@ export function SettingsPage() {
     }))
   }
 
-  function updateBillingPreferences<Key extends keyof BillingPreferences>(key: Key, value: BillingPreferences[Key]) {
-    setBillingPreferences((current) => ({
-      ...current,
-      [key]: value,
-    }))
+  function handleThemeChange(nextTheme: AppTheme) {
+    setAppTheme(nextTheme)
+    setStoredAppTheme(nextTheme)
+    const themeLabel = APP_THEME_OPTIONS.find((option) => option.value === nextTheme)?.label ?? '화면 테마'
+    setStatus(`${themeLabel}를 적용했습니다.`)
   }
 
-  function updateTestCheckoutInput<Key extends keyof TestBillingCheckoutInput>(
-    key: Key,
-    value: TestBillingCheckoutInput[Key],
-  ) {
-    setTestCheckoutInput((current) => ({
-      ...current,
-      [key]: value,
-    }))
-  }
+  const currentThemeLabel = APP_THEME_OPTIONS.find((option) => option.value === appTheme)?.label ?? '화면 테마'
 
   function updateBrandRule(index: number, field: keyof BrandDiscountRule, value: string) {
     setBrandRules((current) =>
@@ -466,195 +370,6 @@ export function SettingsPage() {
     }
   }
 
-  async function handleCreateBillingCheckout() {
-    const issues: string[] = []
-
-    if (!testCheckoutInput.storeName.trim()) {
-      issues.push('매장명을 입력해 주세요.')
-    }
-    if (!testCheckoutInput.ownerName.trim()) {
-      issues.push('대표자명을 입력해 주세요.')
-    }
-    if (!testCheckoutInput.phone.trim()) {
-      issues.push('연락처를 입력해 주세요.')
-    }
-
-    if (billingPreferences.checkoutMode === 'toss' && !billingPreferences.tossClientKey.trim()) {
-      issues.push('토스 테스트 클라이언트 키를 입력해 주세요.')
-    }
-    if (billingPreferences.checkoutMode === 'toss' && !billingPreferences.tossSecretKey.trim()) {
-      issues.push('토스 테스트 시크릿 키를 입력해 주세요.')
-    }
-
-    if (issues.length > 0) {
-      await showValidationDialog(issues, '결제 페이지 생성')
-      return
-    }
-
-    try {
-      setBillingBusy(true)
-      const ensuredPreferences = await ensureBillingDeviceId(billingPreferences)
-      const { preferences: nextPreferences, session } = await createBillingCheckoutSession(ensuredPreferences, {
-        ...testCheckoutInput,
-        mode: ensuredPreferences.checkoutMode,
-        tossClientKey: ensuredPreferences.tossClientKey,
-        tossSecretKey: ensuredPreferences.tossSecretKey,
-      })
-      setBillingPreferences(nextPreferences)
-      setLicenseStatus(session.status)
-      notifyLicenseStatusUpdated()
-      window.open(session.checkoutUrl, '_blank', 'noopener,noreferrer')
-      setStatus(`결제 페이지를 열었습니다. 매장 코드 ${session.storeCode} / 활성화 코드를 확인해 주세요.`)
-    } catch (error) {
-      console.error(error)
-      setStatus(error instanceof Error ? error.message : '결제 페이지 생성에 실패했습니다.')
-      await showErrorDialog(error, '결제 페이지 생성 실패')
-    } finally {
-      setBillingBusy(false)
-    }
-  }
-
-  /* async function handleCreateTestBillingCheckout() {
-    const issues: string[] = []
-
-    if (!testCheckoutInput.storeName.trim()) {
-      issues.push('테스트 결제용 매장명을 입력해 주세요.')
-    }
-    if (!testCheckoutInput.ownerName.trim()) {
-      issues.push('대표자명을 입력해 주세요.')
-    }
-    if (!testCheckoutInput.phone.trim()) {
-      issues.push('연락처를 입력해 주세요.')
-    }
-
-    if (issues.length > 0) {
-      await showValidationDialog(issues, '테스트 결제 생성')
-      return
-    }
-
-    try {
-      setBillingBusy(true)
-      const result = await createTestBillingCheckout(billingPreferences.serverBaseUrl, testCheckoutInput)
-      const nextPreferences = await saveBillingPreferences({
-        ...billingPreferences,
-        storeCode: result.storeCode,
-        activationCode: result.activationCode,
-        cachedStatus: result.status,
-        lastVerifiedAt: new Date().toISOString(),
-      })
-      setBillingPreferences(nextPreferences)
-      setLicenseStatus(result.status)
-      notifyLicenseStatusUpdated()
-      setStatus(`테스트 결제를 만들었습니다. 매장 코드 ${result.storeCode} / 활성화 코드를 확인해 주세요.`)
-    } catch (error) {
-      console.error(error)
-      setStatus(error instanceof Error ? error.message : '테스트 결제 생성에 실패했습니다.')
-      await showErrorDialog(error, '테스트 결제 생성 실패')
-    } finally {
-      setBillingBusy(false)
-    }
-  } */
-
-  async function handleActivateBillingLicense() {
-    const issues: string[] = []
-
-    if (!billingPreferences.serverBaseUrl.trim()) {
-      issues.push('라이선스 서버 주소를 입력해 주세요.')
-    }
-    if (!billingPreferences.storeCode.trim()) {
-      issues.push('매장 코드를 입력해 주세요.')
-    }
-    if (!billingPreferences.activationCode.trim()) {
-      issues.push('활성화 코드를 입력해 주세요.')
-    }
-
-    if (issues.length > 0) {
-      await showValidationDialog(issues, '라이선스 활성화')
-      return
-    }
-
-    try {
-      setBillingBusy(true)
-      const ensuredPreferences = await ensureBillingDeviceId(billingPreferences)
-      setBillingPreferences(ensuredPreferences)
-      const result = await activateBillingLicense(ensuredPreferences)
-      setBillingPreferences(result.preferences)
-      setLicenseStatus(result.status)
-      notifyLicenseStatusUpdated()
-      setStatus(result.status.message)
-    } catch (error) {
-      console.error(error)
-      setStatus(error instanceof Error ? error.message : '라이선스 활성화에 실패했습니다.')
-      await showErrorDialog(error, '라이선스 활성화 실패')
-    } finally {
-      setBillingBusy(false)
-    }
-  }
-
-  async function handleRefreshBillingLicenseStatus() {
-    if (!billingPreferences.serverBaseUrl.trim() || !billingPreferences.storeCode.trim()) {
-      await showValidationDialog(['라이선스 서버 주소와 매장 코드를 먼저 입력해 주세요.'], '라이선스 상태 확인')
-      return
-    }
-
-    try {
-      setBillingBusy(true)
-      const ensuredPreferences = await ensureBillingDeviceId(billingPreferences)
-      setBillingPreferences(ensuredPreferences)
-      const result = await fetchBillingLicenseStatus(ensuredPreferences)
-      setBillingPreferences(result.preferences)
-      setLicenseStatus(result.status)
-      notifyLicenseStatusUpdated()
-      setStatus(result.status.message)
-    } catch (error) {
-      console.error(error)
-      setStatus(error instanceof Error ? error.message : '라이선스 상태 확인에 실패했습니다.')
-      await showErrorDialog(error, '라이선스 상태 확인 실패')
-    } finally {
-      setBillingBusy(false)
-    }
-  }
-
-  async function handleCheckUpdates() {
-    try {
-      setUpdateBusy(true)
-      setStatus('업데이트를 확인하는 중입니다.')
-      const [serverUpdate, updaterStatus] = await Promise.all([
-        checkForLicenseServerUpdates(billingPreferences.serverBaseUrl || DEFAULT_BILLING_SERVER_BASE_URL),
-        checkTauriUpdater(),
-      ])
-      setUpdateResult(serverUpdate)
-      setTauriUpdateStatus(updaterStatus)
-      setStatus(
-        updaterStatus.updateAvailable
-          ? updaterStatus.message
-          : serverUpdate.updateAvailable
-            ? `새 버전 ${serverUpdate.version}이 있습니다.`
-            : '현재 최신 버전입니다.',
-      )
-    } catch (error) {
-      console.error(error)
-      setStatus(error instanceof Error ? error.message : '업데이트 확인에 실패했습니다.')
-      await showErrorDialog(error, '업데이트 확인 실패')
-    } finally {
-      setUpdateBusy(false)
-    }
-  }
-
-  async function handleInstallUpdate() {
-    try {
-      setInstallingUpdate(true)
-      setUpdateProgress(null)
-      setStatus('업데이트를 다운로드하고 설치하는 중입니다.')
-      await downloadInstallAndRelaunch(setUpdateProgress)
-    } catch (error) {
-      console.error(error)
-      setInstallingUpdate(false)
-      setStatus(error instanceof Error ? error.message : '업데이트 설치에 실패했습니다.')
-      await showErrorDialog(error, '업데이트 설치 실패')
-    }
-  }
-
   async function handleSaveAllSettings() {
     try {
       setSaving(true)
@@ -665,12 +380,9 @@ export function SettingsPage() {
       ])
 
       await saveBackupPreferences(backupPreferences)
-      const savedBillingPreferences = await saveBillingPreferences(billingPreferences)
       setBrandRules(savedBrandRules)
       setProductRules(savedProductRules)
       setPublicQuotePreferences(savedPublicQuotePreferences)
-      setBillingPreferences(savedBillingPreferences)
-      notifyLicenseStatusUpdated()
       await refreshRuntimeSummary()
       setStatus('설정을 저장했습니다.')
     } catch (error) {
@@ -731,48 +443,39 @@ export function SettingsPage() {
         <div className="status-pill">{loading ? '설정 로딩 중' : status}</div>
       </header>
 
-      <section className="content-grid content-grid-wide">
-        <article className="panel">
-          <div className="panel-header-inline">
-            <div>
-              <h3>라이선스 서버 업데이트</h3>
-              <p className="page-copy">
-                litire.h19h19.synology.me에 올린 배포 정보를 확인하고, 서명된 업데이트가 있으면 자동 설치합니다.
-              </p>
-            </div>
-            <div className="status-pill">
-              {tauriUpdateStatus?.updateAvailable || updateResult?.updateAvailable ? '업데이트 있음' : '확인 대기'}
-            </div>
+      <section className="panel theme-settings-panel">
+        <div className="panel-header-inline">
+          <div>
+            <h3>화면 테마</h3>
+            <p className="page-copy">
+              기존 밝은 화면, 프리미엄 콘솔, 슈퍼카 HUD, 모노 그리드, 레이싱 피트, 실버 서비스 랩 테마를 선택할 수 있습니다. 선택 즉시
+              저장됩니다.
+            </p>
           </div>
+          <div className="status-pill">{currentThemeLabel} 사용 중</div>
+        </div>
 
-          <div className="button-row">
-            <button className="secondary-button" disabled={updateBusy || installingUpdate} onClick={handleCheckUpdates} type="button">
-              {updateBusy ? '확인 중...' : '업데이트 확인'}
-            </button>
+        <div aria-label="화면 테마 선택" className="theme-choice-grid" role="group">
+          {APP_THEME_OPTIONS.map((option) => (
             <button
-              className="primary-button"
-              disabled={!tauriUpdateStatus?.updateAvailable || installingUpdate}
-              onClick={handleInstallUpdate}
+              aria-pressed={appTheme === option.value}
+              className={`theme-choice-card${appTheme === option.value ? ' is-active' : ''}`}
+              key={option.value}
+              onClick={() => handleThemeChange(option.value)}
               type="button"
             >
-              {installingUpdate
-                ? `설치 중${updateProgress?.percent == null ? '' : ` ${updateProgress.percent}%`}`
-                : '자동 설치'}
+              <span className={`theme-swatch theme-swatch-${option.value}`} aria-hidden="true">
+                <span />
+                <span />
+                <span />
+              </span>
+              <span className="theme-choice-copy">
+                <strong>{option.label}</strong>
+                <span>{option.description}</span>
+              </span>
             </button>
-            {updateResult?.url ? (
-              <a className="secondary-button" href={updateResult.url} rel="noreferrer" target="_blank">
-                수동 다운로드
-              </a>
-            ) : null}
-          </div>
-
-          <div className="note-box">
-            <p>현재 버전: 1.5.0</p>
-            <p>서버 최신 버전: {updateResult?.version ?? '-'}</p>
-            <p>자동 업데이트: {tauriUpdateStatus?.message ?? '아직 확인하지 않았습니다.'}</p>
-            <p>배포 메모: {tauriUpdateStatus?.body ?? updateResult?.notes ?? '-'}</p>
-          </div>
-        </article>
+          ))}
+        </div>
       </section>
 
       <section className="content-grid content-grid-wide">
@@ -880,170 +583,6 @@ export function SettingsPage() {
             </button>
             <button className="primary-button" disabled={saving} onClick={handleSaveAllSettings} type="button">
               {saving ? '저장 중...' : '설정 모두 저장'}
-            </button>
-          </div>
-        </article>
-      </section>
-
-      <section className="content-grid content-grid-wide">
-        <article className="panel">
-          <div className="panel-header-inline">
-            <div>
-              <h3>라이선스 / 결제 테스트</h3>
-              <p className="page-copy">
-                사업자 등록 전에는 테스트 서버로 월간/연간 플랜과 활성화 코드를 먼저 검증할 수 있습니다.
-              </p>
-            </div>
-            <div className="status-pill">
-              {getLicenseStatusLabel(licenseStatus.status)}
-              {licenseStatus.isTestMode ? ' · 테스트' : ''}
-            </div>
-          </div>
-
-          <div className="form-grid">
-            <label className="field field-wide">
-              <span>라이선스 서버 주소</span>
-              <input
-                onChange={(event) => updateBillingPreferences('serverBaseUrl', event.target.value)}
-                placeholder="http://127.0.0.1:4175"
-                value={billingPreferences.serverBaseUrl}
-              />
-            </label>
-
-            <label className="field">
-              <span>매장 코드</span>
-              <input
-                onChange={(event) => updateBillingPreferences('storeCode', event.target.value)}
-                placeholder="STORE-XXXXXX"
-                value={billingPreferences.storeCode}
-              />
-            </label>
-
-            <label className="field">
-              <span>활성화 코드</span>
-              <input
-                onChange={(event) => updateBillingPreferences('activationCode', event.target.value)}
-                placeholder="LIC-XXXXXXXX"
-                value={billingPreferences.activationCode}
-              />
-            </label>
-
-            <label className="field">
-              <span>기기 이름</span>
-              <input
-                onChange={(event) => updateBillingPreferences('deviceName', event.target.value)}
-                placeholder="매장PC"
-                value={billingPreferences.deviceName}
-              />
-            </label>
-
-            <label className="field">
-              <span>기기 ID</span>
-              <input readOnly value={billingPreferences.deviceId || '활성화 시 자동 발급'} />
-            </label>
-          </div>
-
-          <div className="button-row">
-            <button className="secondary-button" disabled={billingBusy} onClick={handleRefreshBillingLicenseStatus} type="button">
-              {billingBusy ? '확인 중..' : '라이선스 상태 확인'}
-            </button>
-            <button className="primary-button" disabled={billingBusy} onClick={handleActivateBillingLicense} type="button">
-              {billingBusy ? '활성화 중..' : '라이선스 활성화'}
-            </button>
-          </div>
-
-          <div className="note-box">
-            <strong>{licenseStatus.storeName || '아직 활성화되지 않았습니다.'}</strong>
-            <p>안내: {licenseStatus.message}</p>
-            <p>
-              상태 요약:{' '}
-              {isLicenseBlocking(licenseStatus)
-                ? '현재 만료/미활성 상태라 판매, 재고, 고객 화면 사용이 제한됩니다.'
-                : isLicenseUsable(licenseStatus)
-                  ? '정상 사용 상태입니다.'
-                  : '서버 연결 전 준비 상태입니다.'}
-            </p>
-            <p>
-              플랜: {licenseStatus.planName || '-'} / 다음 결제일: {formatDateTime(licenseStatus.nextBillingAt)}
-            </p>
-            <p>
-              만료일: {formatDateTime(licenseStatus.expiresAt)} / 유예 종료: {formatDateTime(licenseStatus.graceUntil)}
-            </p>
-            <p>
-              사용 기기: {licenseStatus.registeredDeviceCount} / {licenseStatus.deviceLimit}대
-              {billingPreferences.lastVerifiedAt ? ` / 마지막 확인 ${formatDateTime(billingPreferences.lastVerifiedAt)}` : ''}
-            </p>
-          </div>
-        </article>
-
-        <article className="panel">
-          <div className="panel-header-inline">
-            <div>
-              <h3>테스트 플랜 생성</h3>
-              <p className="page-copy">
-                첫 결제와 활성화 코드 발급 흐름을 먼저 연습합니다. 실제 토스 결제는 다음 단계에서 이 서버 엔드포인트에 연결합니다.
-              </p>
-            </div>
-          </div>
-
-          <div className="form-grid">
-            <label className="field">
-              <span>매장명</span>
-              <input
-                onChange={(event) => updateTestCheckoutInput('storeName', event.target.value)}
-                placeholder="예: 맥스타드 타이어"
-                value={testCheckoutInput.storeName}
-              />
-            </label>
-
-            <label className="field">
-              <span>대표자명</span>
-              <input
-                onChange={(event) => updateTestCheckoutInput('ownerName', event.target.value)}
-                placeholder="예: 홍길동"
-                value={testCheckoutInput.ownerName}
-              />
-            </label>
-
-            <label className="field">
-              <span>연락처</span>
-              <input
-                onChange={(event) => updateTestCheckoutInput('phone', event.target.value)}
-                placeholder="010-0000-0000"
-                value={testCheckoutInput.phone}
-              />
-            </label>
-
-            <label className="field">
-              <span>플랜</span>
-              <select
-                className="field-select"
-                onChange={(event) => updateTestCheckoutInput('planCode', event.target.value as BillingPlanCode)}
-                value={testCheckoutInput.planCode}
-              >
-                {BILLING_PLANS.map((plan) => (
-                  <option key={plan.code} value={plan.code}>
-                    {plan.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-
-          <div className="billing-plan-grid">
-            {BILLING_PLANS.map((plan) => (
-              <article className="billing-plan-card" key={plan.code}>
-                <strong>{plan.name}</strong>
-                <p>{plan.description}</p>
-                <p>첫 결제: {formatMoney(plan.initialChargeAmount)}</p>
-                <p>정기 과금: {formatMoney(plan.recurringChargeAmount)}</p>
-              </article>
-            ))}
-          </div>
-
-          <div className="button-row">
-            <button className="primary-button" disabled={billingBusy} onClick={handleCreateBillingCheckout} type="button">
-              {billingBusy ? '생성 중..' : '테스트 결제 / 코드 생성'}
             </button>
           </div>
         </article>

@@ -647,7 +647,7 @@ export function DashboardPage() {
       <section className="panel dashboard-headline-panel">
         <div className="dashboard-headline-grid">
           <article className="dashboard-headline-card">
-            <p className="dashboard-headline-label">전일수량</p>
+            <p className="dashboard-headline-label">전일누계</p>
             <strong className="dashboard-headline-value">
               {(analytics?.headline.previousQuantity ?? 0).toLocaleString('ko-KR')}
             </strong>
@@ -1070,7 +1070,7 @@ export function DashboardPage() {
 
         <article className="panel">
           <h3>{getSalesHistoryTitle(appliedRangeMode)}</h3>
-          <div className="table-wrap">
+          <div className="table-wrap dashboard-sales-history-wrap">
             <table className="data-table">
               <thead>
                 <tr>
@@ -1088,14 +1088,14 @@ export function DashboardPage() {
                     <td>{sale.soldAt}</td>
                     <td>
                       <strong>{sale.plateNumber || '-'}</strong>
-                      <div style={{ color: 'var(--muted)', fontSize: '0.88rem' }}>
+                      <div className="dashboard-sales-muted">
                         {sale.customerName || '미등록 고객'}
                       </div>
                     </td>
                     <td>{sale.tireQuantity.toLocaleString('ko-KR')}</td>
                     <td>
                       <div>카드 {formatMoney(sale.cardAmount)}원</div>
-                      <div style={{ color: 'var(--muted)', fontSize: '0.88rem' }}>
+                      <div className="dashboard-sales-muted">
                         네이버 {formatMoney(sale.naverAmount)}원 / 현금 {formatMoney(sale.cashAmount)}원
                       </div>
                     </td>
@@ -1168,21 +1168,23 @@ export function DashboardPage() {
               <thead>
                 <tr>
                   <th>규격</th>
+                  <th>패턴</th>
                   <th>판매량</th>
                   <th>매출</th>
                 </tr>
               </thead>
               <tbody>
                 {analytics?.topSizes.map((row) => (
-                  <tr key={row.label}>
+                  <tr key={`${row.patternName ?? 'none'}-${row.label}`}>
                     <td>{row.label}</td>
+                    <td>{row.patternName ?? '-'}</td>
                     <td>{row.quantity.toLocaleString('ko-KR')}</td>
                     <td>{formatMoney(row.amount)}원</td>
                   </tr>
                 ))}
                 {(analytics?.topSizes.length ?? 0) === 0 ? (
                   <tr>
-                    <td className="empty-cell" colSpan={3}>
+                    <td className="empty-cell" colSpan={4}>
                       선택한 기간의 판매 데이터가 없습니다.
                     </td>
                   </tr>

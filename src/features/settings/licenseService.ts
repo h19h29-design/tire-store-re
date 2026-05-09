@@ -42,22 +42,22 @@ type ServerLicenseResponse = {
 }
 
 export const DEFAULT_BILLING_SERVER_BASE_URL = 'https://litire.h19h19.synology.me'
-export const DEFAULT_DEVICE_NAME = '매장PC'
-export const APP_VERSION = '1.6.1'
+export const DEFAULT_DEVICE_NAME = '매장 PC'
+export const APP_VERSION = '1.89.0'
 
 export const BILLING_PLANS: BillingPlan[] = [
   {
     code: 'monthly',
-    name: '월간 구독',
-    description: '초기 세팅비 99,000원 + 월 29,000원',
+    name: '월간',
+    description: '초기 설치비 99,000원 + 월 29,000원',
     initialChargeAmount: 128_000,
     recurringChargeAmount: 29_000,
     billingCycle: 'monthly',
   },
   {
     code: 'annual',
-    name: '연간 구독',
-    description: '연 348,000원, 초기 세팅비 면제',
+    name: '연간',
+    description: '연 348,000원, 초기 설치비 면제',
     initialChargeAmount: 348_000,
     recurringChargeAmount: 348_000,
     billingCycle: 'annual',
@@ -149,7 +149,7 @@ async function fetchJson<T>(url: string, options: RequestInit = {}) {
         ? payload.message
         : payload && typeof payload === 'object' && 'error' in payload && typeof payload.error === 'string'
           ? payload.error
-          : `서버 요청에 실패했습니다. (${response.status})`
+          : `서버가 오류 응답을 보냈습니다. (${response.status})`
     throw new Error(message)
   }
 
@@ -195,7 +195,7 @@ function normalizeLicenseStatus(raw: ServerLicenseResponse | LicenseStatus): Lic
     storeCode: String(response.email ?? ''),
     storeName: String(response.email ?? ''),
     planCode: '',
-    planName: status === 'active' ? '서버 라이선스' : '',
+    planName: status === 'active' ? '활성 라이선스' : '',
     billingCycle: '',
     isTestMode: false,
     deviceId: '',
@@ -213,18 +213,18 @@ function normalizeLicenseStatus(raw: ServerLicenseResponse | LicenseStatus): Lic
 
 function defaultMessageForStatus(status: LicenseStatus['status'], offlineGraceDays = 7) {
   if (status === 'active') {
-    return '라이선스가 확인되었습니다.'
+    return '라이선스가 정상적으로 활성화되어 있습니다.'
   }
   if (status === 'grace') {
-    return `서버 확인이 지연되어 ${offlineGraceDays}일 유예 기간으로 동작합니다.`
+    return `라이선스 서버 확인에 실패했지만 ${offlineGraceDays}일 유예 기간 동안 계속 사용할 수 있습니다.`
   }
   if (status === 'expired') {
-    return '라이선스 기간이 만료되었습니다.'
+    return '라이선스가 만료되었습니다. 결제 또는 갱신을 확인해 주세요.'
   }
   if (status === 'suspended') {
-    return '라이선스가 중지되었거나 사용 가능한 기기 수를 초과했습니다.'
+    return '라이선스가 중지되었거나 이 기기에서 사용할 수 없습니다. 관리자에게 문의해 주세요.'
   }
-  return '발급받은 아이디와 라이선스 키로 로그인해 주세요.'
+  return '라이선스 상태를 확인할 수 없습니다. 관리자에게 문의해 주세요.'
 }
 
 function createRequestBody(preferences: BillingPreferences) {
@@ -393,7 +393,7 @@ export async function fetchBillingLicenseStatus(preferences: BillingPreferences)
         preferences: normalized,
         status: {
           ...normalized.cachedStatus,
-          message: '라이선스 서버 연결에 실패해 최근 확인된 상태로 동작합니다.',
+          message: '라이선스 서버에 연결할 수 없어 저장된 상태로 임시 사용 중입니다.',
         },
       }
     }
@@ -492,8 +492,9 @@ export type UpdateCheckResult = {
 export async function checkForLicenseServerUpdates(
   serverBaseUrl: string,
   channel = 'stable',
+  currentVersion = APP_VERSION,
 ): Promise<UpdateCheckResult> {
   return fetchJson<UpdateCheckResult>(
-    `${normalizeBaseUrl(serverBaseUrl)}/updates/${encodeURIComponent(channel)}/windows/x86_64/${APP_VERSION}`,
+    `${normalizeBaseUrl(serverBaseUrl)}/updates/${encodeURIComponent(channel)}/windows/x86_64/${encodeURIComponent(currentVersion)}`,
   )
 }

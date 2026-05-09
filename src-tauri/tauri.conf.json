@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Tire Store",
-  "version": "1.6.1",
+  "version": "1.89.0",
   "identifier": "com.tirestore.desktop",
   "build": {
     "frontendDist": "../dist",
@@ -40,7 +40,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDcyNEI4Q0VDOTAxMzRFNjAKUldSZ1RoT1E3SXhMY29xNjkzRXpDa3dMb215UE5vWWp1dkxpOGZ3Q0JHWUx2SUd3RERMY2tPZ3oK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEY3QUEyMDYwMEMxMERCRTkKUldUcDJ4QU1ZQ0NxOTM3NlFNWllFYnFaMStUb0JPamlRdjNWa3pudWpRMkpNcUhXd2k3U1plejYK",
       "endpoints": [
         "https://litire.h19h19.synology.me/tauri-updates/stable/windows/x86_64/{{current_version}}"
       ]
