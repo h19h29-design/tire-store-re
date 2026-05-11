@@ -108,8 +108,6 @@ function getEditableMaxQuantity(line: SaleDraftLine) {
 
 function resolveCartPricing(
   cart: SaleDraftLine[],
-  rawPaymentTotal: number,
-  serviceTotal: number,
   options: {
     preserveExistingPricing?: boolean
   } = {},
@@ -118,20 +116,9 @@ function resolveCartPricing(
     return []
   }
 
-  const quantityTotal = cart.reduce((sum, line) => sum + Math.max(0, line.quantity), 0)
   const preserveExistingPricing = options.preserveExistingPricing === true
-  const defaultTireTotal = cart.reduce(
-    (sum, line) =>
-      sum +
-      (preserveExistingPricing
-        ? line.lineTotalOverride ?? Math.max(0, line.unitPrice) * Math.max(0, line.quantity)
-        : getDiscountedPrice(getSaleBasePrice(line), line.defaultDiscountRate) * Math.max(0, line.quantity)),
-    0,
-  )
-  const targetTireTotal =
-    rawPaymentTotal > 0 ? Math.max(0, rawPaymentTotal - serviceTotal) : defaultTireTotal
 
-  if (preserveExistingPricing && rawPaymentTotal <= 0) {
+  if (preserveExistingPricing) {
     return cart.map((line) => {
       const quantity = Math.max(0, line.quantity)
       const lineTotal = line.lineTotalOverride ?? Math.max(0, line.unitPrice) * quantity
@@ -145,34 +132,12 @@ function resolveCartPricing(
     })
   }
 
-  if (targetTireTotal <= 0 || quantityTotal <= 0) {
-    return cart.map((line) => {
-      const unitPrice = preserveExistingPricing
-        ? Math.max(0, Math.round(line.unitPrice))
-        : getDiscountedPrice(getSaleBasePrice(line), line.defaultDiscountRate)
-      return {
-        ...line,
-        unitPrice,
-        lineTotalOverride: unitPrice * Math.max(0, line.quantity),
-      }
-    })
-  }
-
-  let allocatedTotal = 0
-
-  return cart.map((line, index) => {
-    const quantity = Math.max(1, line.quantity)
-    const lineTotal =
-      index === cart.length - 1
-        ? Math.max(0, targetTireTotal - allocatedTotal)
-        : Math.max(0, Math.round((targetTireTotal * quantity) / quantityTotal))
-
-    allocatedTotal += lineTotal
-
+  return cart.map((line) => {
+    const unitPrice = getDiscountedPrice(getSaleBasePrice(line), line.defaultDiscountRate)
     return {
       ...line,
-      unitPrice: Math.max(0, Math.round(lineTotal / quantity)),
-      lineTotalOverride: lineTotal,
+      unitPrice,
+      lineTotalOverride: unitPrice * Math.max(0, line.quantity),
     }
   })
 }
@@ -536,17 +501,7 @@ export function SalesPage() {
   const hasSelectedItems = cart.length > 0
   const isPaymentOnlySale = !hasSelectedItems && explicitServiceTotal === 0 && rawPaymentTotal > 0
   const hasManualCashAmount = cashAmount.trim() !== ''
-  const defaultResolvedCart = resolveCartPricing(cart, 0, explicitServiceTotal, {
-    preserveExistingPricing: isEditMode,
-  })
-  const defaultTireTotal = defaultResolvedCart.reduce(
-    (sum, line) => sum + (line.lineTotalOverride ?? line.unitPrice * line.quantity),
-    0,
-  )
-  const defaultTotalAmount = defaultTireTotal + explicitServiceTotal
-  const pricingPaymentTotal =
-    !isEditMode && (hasManualCashAmount || rawPaymentTotal >= defaultTotalAmount) ? rawPaymentTotal : 0
-  const resolvedCart = resolveCartPricing(cart, pricingPaymentTotal, explicitServiceTotal, {
+  const resolvedCart = resolveCartPricing(cart, {
     preserveExistingPricing: isEditMode,
   })
   const tireTotal = resolvedCart.reduce((sum, line) => sum + (line.lineTotalOverride ?? line.unitPrice * line.quantity), 0)

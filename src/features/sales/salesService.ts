@@ -2,6 +2,7 @@ import { execute, selectFirst, selectRows, runTransaction } from '../../lib/db'
 import { getCurrentSeoulDateTimeValue, normalizePhone, normalizePlate, normalizeText } from '../../lib/normalize'
 import { guessVehicleBrandName } from '../../lib/referenceData'
 import type { InventoryListRow, PlateLookupRow } from '../../lib/types'
+import { getDiscountedPrice } from '../publicQuote/quoteUtils'
 import { ensureSaleLineCostSnapshotSchema } from './saleLineCostSnapshotSchema'
 
 export type SaleDraftLine = InventoryListRow & {
@@ -11,6 +12,9 @@ export type SaleDraftLine = InventoryListRow & {
   maxEditableQuantity?: number
   persistedItemId?: number | null
   inventoryLinked?: boolean
+  saleBasePriceSnapshot?: number | null
+  saleDiscountRateSnapshot?: number | null
+  discountedUnitPriceSnapshot?: number | null
 }
 
 export type SaveSaleInput = {
@@ -88,6 +92,9 @@ type SaleLineDetailRow = {
   quantity: number
   unitPrice: number
   lineTotal: number
+  saleBasePriceSnapshot: number | null
+  saleDiscountRateSnapshot: number | null
+  discountedUnitPriceSnapshot: number | null
   skuCode: string | null
   brandName: string | null
   patternName: string | null
@@ -236,6 +243,25 @@ function isPlaceholderServiceDescription(value: string) {
   return normalized === 'service' || normalized === 'additionalservice'
 }
 
+function getSaleBasePrice(line: Pick<SaleDraftLine, 'defaultCostPrice' | 'defaultSalePrice'>) {
+  return line.defaultSalePrice > 0 ? line.defaultSalePrice : line.defaultCostPrice
+}
+
+function getSalePriceSnapshot(line: SaleDraftLine) {
+  const basePrice = Math.max(0, Number(line.saleBasePriceSnapshot ?? getSaleBasePrice(line)))
+  const discountRate = Math.max(0, Math.min(100, Number(line.saleDiscountRateSnapshot ?? line.defaultDiscountRate ?? 0)))
+  const discountedUnitPrice = Math.max(
+    0,
+    Number(line.discountedUnitPriceSnapshot ?? getDiscountedPrice(basePrice, discountRate)),
+  )
+
+  return {
+    basePrice,
+    discountRate,
+    discountedUnitPrice,
+  }
+}
+
 async function ensureSalesSchema() {
   salesSchemaPromise ??= (async () => {
     const saleColumns = await selectRows<TableInfoRow>('PRAGMA table_info(sales)')
@@ -298,6 +324,7 @@ async function insertSaleContents(input: {
       line.quantity > 0 ? Math.max(0, Math.round(lineTotal / line.quantity)) : Math.max(0, line.unitPrice)
     const persistedItemId = getPersistedItemId(line)
     const costPriceSnapshot = persistedItemId ? input.costPriceSnapshots.get(persistedItemId) ?? null : null
+    const priceSnapshot = getSalePriceSnapshot(line)
 
     await execute(
       `INSERT INTO sale_lines (
@@ -307,17 +334,23 @@ async function insertSaleContents(input: {
         item_snapshot_name,
         size_snapshot,
         cost_price_snapshot,
+        sale_base_price_snapshot,
+        sale_discount_rate_snapshot,
+        discounted_unit_price_snapshot,
         quantity,
         unit_price,
         line_total,
         memo
-      ) VALUES (?, 'tire', ?, ?, ?, ?, ?, ?, ?, '')`,
+      ) VALUES (?, 'tire', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '')`,
       [
         input.saleId,
         persistedItemId,
         `${line.brandName} ${line.patternName}`.trim(),
         line.sizeLabel,
         costPriceSnapshot,
+        priceSnapshot.basePrice,
+        priceSnapshot.discountRate,
+        priceSnapshot.discountedUnitPrice,
         line.quantity,
         unitPrice,
         lineTotal,
@@ -591,6 +624,9 @@ export async function loadSaleForEdit(saleId: number): Promise<SaleEditDraft> {
       sale_lines.quantity AS quantity,
       sale_lines.unit_price AS unitPrice,
       sale_lines.line_total AS lineTotal,
+      sale_lines.sale_base_price_snapshot AS saleBasePriceSnapshot,
+      sale_lines.sale_discount_rate_snapshot AS saleDiscountRateSnapshot,
+      sale_lines.discounted_unit_price_snapshot AS discountedUnitPriceSnapshot,
       items.sku_code AS skuCode,
       items.brand_name AS brandName,
       items.pattern_name AS patternName,
@@ -637,6 +673,9 @@ export async function loadSaleForEdit(saleId: number): Promise<SaleEditDraft> {
           ? currentQuantityOnHand + quantity
           : Math.max(currentQuantityOnHand, quantity)
         : quantity
+      const saleBasePriceSnapshot = Math.max(0, Number(row.saleBasePriceSnapshot ?? 0))
+      const saleDiscountRateSnapshot = Math.max(0, Math.min(100, Number(row.saleDiscountRateSnapshot ?? 0)))
+      const discountedUnitPriceSnapshot = Math.max(0, Number(row.discountedUnitPriceSnapshot ?? 0))
       lines.push({
         id: isLinkedInventoryItem ? itemId : -(lines.length + 1),
         persistedItemId: isLinkedInventoryItem ? itemId : null,
@@ -647,8 +686,8 @@ export async function loadSaleForEdit(saleId: number): Promise<SaleEditDraft> {
         sizeLabel: row.sizeLabel || row.sizeSnapshot || '',
         productName: row.productName ?? (isLinkedInventoryItem ? '' : '연결이 끊긴 기존 판매 품목'),
         defaultCostPrice: Math.max(0, Number(row.defaultCostPrice ?? 0)),
-        defaultSalePrice: Math.max(0, Number(row.unitPrice ?? row.defaultSalePrice ?? 0)),
-        defaultDiscountRate: Math.max(0, Number(row.defaultDiscountRate ?? 0)),
+        defaultSalePrice: saleBasePriceSnapshot || Math.max(0, Number(row.unitPrice ?? row.defaultSalePrice ?? 0)),
+        defaultDiscountRate: saleBasePriceSnapshot ? saleDiscountRateSnapshot : Math.max(0, Number(row.defaultDiscountRate ?? 0)),
         quantityOnHand,
         quantityAvailable: isLinkedInventoryItem ? currentQuantityAvailable : quantity,
         latestReceivedAt: null,
@@ -658,6 +697,9 @@ export async function loadSaleForEdit(saleId: number): Promise<SaleEditDraft> {
         unitPrice: Math.max(0, Number(row.unitPrice ?? 0)),
         lineTotalOverride: Math.max(0, Number(row.lineTotal ?? 0)),
         maxEditableQuantity,
+        saleBasePriceSnapshot: saleBasePriceSnapshot || null,
+        saleDiscountRateSnapshot: row.saleDiscountRateSnapshot === null ? null : saleDiscountRateSnapshot,
+        discountedUnitPriceSnapshot: discountedUnitPriceSnapshot || null,
       })
       continue
     }

@@ -16,5 +16,11 @@ pub fn migrations() -> Vec<Migration> {
       sql: include_str!("../migrations/0002_reference_data.sql"),
       kind: MigrationKind::Up,
     },
+    Migration {
+      version: 3,
+      description: "add_sale_line_price_snapshots",
+      sql: include_str!("../migrations/0003_sale_line_price_snapshots.sql"),
+      kind: MigrationKind::Up,
+    },
   ]
 }

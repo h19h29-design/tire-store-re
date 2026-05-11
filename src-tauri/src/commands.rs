@@ -1401,17 +1401,52 @@ async fn ensure_sale_line_cost_snapshot_column(pool: &SqlitePool) -> Result<(), 
         .await
         .map_err(|error| error.to_string())?;
 
-    let has_cost_price_snapshot = rows.iter().any(|row| {
-        row.try_get::<String, _>("name")
-            .map(|name| name == "cost_price_snapshot")
-            .unwrap_or(false)
-    });
+    let column_names = rows
+        .iter()
+        .map(|row| row.try_get::<String, _>("name"))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
 
-    if !has_cost_price_snapshot {
+    if !column_names
+        .iter()
+        .any(|column_name| column_name == "cost_price_snapshot")
+    {
         sqlx::query("ALTER TABLE sale_lines ADD COLUMN cost_price_snapshot INTEGER")
             .execute(pool)
             .await
             .map_err(|error| error.to_string())?;
+    }
+
+    if !column_names
+        .iter()
+        .any(|column_name| column_name == "sale_base_price_snapshot")
+    {
+        sqlx::query("ALTER TABLE sale_lines ADD COLUMN sale_base_price_snapshot INTEGER")
+            .execute(pool)
+            .await
+            .map_err(|error| error.to_string())?;
+    }
+
+    if !column_names
+        .iter()
+        .any(|column_name| column_name == "sale_discount_rate_snapshot")
+    {
+        sqlx::query("ALTER TABLE sale_lines ADD COLUMN sale_discount_rate_snapshot REAL")
+            .execute(pool)
+            .await
+            .map_err(|error| error.to_string())?;
+    }
+
+    if !column_names
+        .iter()
+        .any(|column_name| column_name == "discounted_unit_price_snapshot")
+    {
+        sqlx::query(
+            "ALTER TABLE sale_lines ADD COLUMN discounted_unit_price_snapshot INTEGER",
+        )
+        .execute(pool)
+        .await
+        .map_err(|error| error.to_string())?;
     }
 
     Ok(())
