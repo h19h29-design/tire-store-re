@@ -44,7 +44,10 @@ export async function buildPublicQuoteFeed(
       patternName: item.patternName,
       sizeLabel: item.sizeLabel,
       productName: item.productName,
-      quoteUnitPrice: getDiscountedPrice(item.defaultSalePrice, item.defaultDiscountRate),
+      quoteUnitPrice: getDiscountedPrice(
+        item.defaultCostPrice > 0 ? item.defaultCostPrice : item.defaultSalePrice,
+        item.defaultDiscountRate,
+      ),
       quoteAvailable: item.quantityAvailable > 0,
       publicQuoteUrl: item.publicQuoteUrl.trim(),
       searchText: buildPublicQuoteSearchText([

@@ -244,7 +244,7 @@ function isPlaceholderServiceDescription(value: string) {
 }
 
 function getSaleBasePrice(line: Pick<SaleDraftLine, 'defaultCostPrice' | 'defaultSalePrice'>) {
-  return line.defaultSalePrice > 0 ? line.defaultSalePrice : line.defaultCostPrice
+  return line.defaultCostPrice > 0 ? line.defaultCostPrice : line.defaultSalePrice
 }
 
 function getSalePriceSnapshot(line: SaleDraftLine) {

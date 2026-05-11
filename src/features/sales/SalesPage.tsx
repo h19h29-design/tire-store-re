@@ -91,7 +91,7 @@ function isLowStock(quantityAvailable: number, threshold: number) {
 }
 
 function getSaleBasePrice(item: Pick<InventoryListRow, 'defaultCostPrice' | 'defaultSalePrice'>) {
-  return item.defaultSalePrice > 0 ? item.defaultSalePrice : item.defaultCostPrice
+  return item.defaultCostPrice > 0 ? item.defaultCostPrice : item.defaultSalePrice
 }
 
 function isEditableElement(target: EventTarget | null) {
