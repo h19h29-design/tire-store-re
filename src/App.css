@@ -963,7 +963,66 @@
 }
 
 .sales-table-wrap {
-  max-height: 8.25rem;
+  max-height: none;
+  overflow: visible;
+}
+
+.sales-table-wrap .data-table {
+  table-layout: fixed;
+}
+
+.sales-table-wrap .data-table th,
+.sales-table-wrap .data-table td {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: keep-all;
+}
+
+.sales-table-wrap .data-table th:nth-child(1),
+.sales-table-wrap .data-table td:nth-child(1) {
+  width: 28%;
+}
+
+.sales-table-wrap .data-table th:nth-child(2),
+.sales-table-wrap .data-table td:nth-child(2) {
+  width: 15%;
+}
+
+.sales-table-wrap .data-table th:nth-child(3),
+.sales-table-wrap .data-table td:nth-child(3) {
+  width: 8%;
+}
+
+.sales-table-wrap .data-table th:nth-child(4),
+.sales-table-wrap .data-table td:nth-child(4) {
+  width: 20%;
+}
+
+.sales-table-wrap .data-table th:nth-child(5),
+.sales-table-wrap .data-table td:nth-child(5) {
+  width: 18%;
+  white-space: nowrap;
+}
+
+.sales-table-wrap .data-table th:nth-child(6),
+.sales-table-wrap .data-table td:nth-child(6) {
+  width: 11%;
+}
+
+.sales-table-wrap .table-input-wrap {
+  min-width: 0;
+}
+
+.sales-table-wrap .table-input {
+  min-width: 0;
+  padding: 0.42rem 0.52rem;
+}
+
+.sales-table-wrap .table-action {
+  width: 100%;
+  min-width: 3.2rem;
+  padding: 0.48rem 0.58rem;
 }
 
 .sales-form-section .button-row {
@@ -1054,7 +1113,7 @@
   }
 
   .sales-table-wrap {
-    max-height: 7.5rem;
+    max-height: none;
   }
 }
 
@@ -1100,7 +1159,7 @@
   }
 
   .sales-table-wrap {
-    max-height: 6.75rem;
+    max-height: none;
   }
 
   .sales-form-section .button-row {
