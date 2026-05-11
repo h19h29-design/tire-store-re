@@ -20,7 +20,7 @@ const DATA_PATH = path.join(DATA_DIR, 'litire-license-data.json')
 const DAY_MS = 24 * 60 * 60 * 1000
 const ADMIN_SESSION_COOKIE = 'litire_admin_session'
 const ADMIN_SESSION_TTL_MS = 12 * 60 * 60 * 1000
-const SERVER_VERSION = '1.89.0'
+const SERVER_VERSION = '1.90.0'
 const GOOGLE_DRIVE_CONFIG_SOURCE_URL =
   process.env.GOOGLE_DRIVE_CONFIG_SOURCE_URL?.trim() || 'https://liyaj.h19h19.synology.me/config/public'
 const GOOGLE_DRIVE_CONFIG_CACHE_MS = 5 * 60 * 1000

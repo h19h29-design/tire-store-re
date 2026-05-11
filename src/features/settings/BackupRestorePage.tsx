@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { open } from '@tauri-apps/plugin-dialog'
 import {
   deleteDriveBackupPassword,
   getDriveBackupPassword,
@@ -30,7 +31,8 @@ import {
   saveGoogleDriveDeviceClientSecretOverride,
   type GoogleDriveDeviceAuthorization,
 } from '../../lib/backup/googleDriveAuth'
-import { createBackup, exportDatabaseBackupPayload, restoreDatabaseFromBase64 } from '../../lib/desktop'
+import { createBackup, exportDatabaseBackupPayload, restoreDatabaseFromBase64, restoreDatabaseFromPath } from '../../lib/desktop'
+import { closeDatabase } from '../../lib/db'
 
 type DriveAuthNotice = Pick<GoogleDriveDeviceAuthorization, 'userCode' | 'verificationUrl'>
 
@@ -271,11 +273,38 @@ export function BackupRestorePage() {
       const accessToken = await ensureAccessToken()
       const pack = await downloadDriveBackup(accessToken, selectedFile.id)
       const payload = await decryptBackupPackage(pack, password)
+      await closeDatabase()
       const result = await restoreDatabaseFromBase64(payload.databaseBase64)
       markDriveBackup(payload.exportedAt)
       setMessage(`복원이 완료되었습니다. 기존 DB 안전 백업: ${result.backupPath}`)
+      scheduleReload()
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Google Drive 백업 복원에 실패했습니다.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function restoreLocalBackup() {
+    const selected = await open({
+      multiple: false,
+      filters: [{ name: 'Database backup', extensions: ['db', 'sqlite', 'sqlite3'] }],
+    })
+
+    if (typeof selected !== 'string') return
+
+    const confirmed = window.confirm(`${selected} 파일로 현재 DB를 교체합니다. 계속할까요?`)
+    if (!confirmed) return
+
+    setBusy(true)
+    try {
+      await closeDatabase()
+      const result = await restoreDatabaseFromPath(selected)
+      window.localStorage.setItem('tireStore.lastBackupAt', result.createdAt)
+      setMessage(`로컬 백업 복원이 완료되었습니다. 기존 DB 안전 백업: ${result.backupPath}`)
+      scheduleReload()
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : '로컬 백업 복원에 실패했습니다.')
     } finally {
       setBusy(false)
     }
@@ -435,7 +464,10 @@ export function BackupRestorePage() {
             Drive 백업
           </button>
           <button className="secondary-button" disabled={busy || !selectedFile} type="button" onClick={() => void restoreSelected()}>
-            선택 백업 복원
+            Drive 선택 백업 복원
+          </button>
+          <button className="secondary-button" disabled={busy} type="button" onClick={() => void restoreLocalBackup()}>
+            로컬 백업 파일 복원
           </button>
           <button className="secondary-button" disabled={busy || !selectedFile} type="button" onClick={() => void deleteSelected()}>
             선택 삭제
@@ -493,4 +525,10 @@ function openExternalUrl(url: string) {
   } catch {
     // Ignore blocked popups; the visible code and URL remain on screen.
   }
+}
+
+function scheduleReload() {
+  window.setTimeout(() => {
+    window.location.reload()
+  }, 900)
 }

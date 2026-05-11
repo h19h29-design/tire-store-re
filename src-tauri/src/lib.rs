@@ -34,6 +34,7 @@ pub fn run() {
             commands::parse_sales_workbook,
             commands::parse_vendor_price_workbook,
             commands::restore_database_from_base64,
+            commands::restore_database_from_path,
             commands::save_platform_secret,
             commands::apply_vendor_price_workbook,
         ])

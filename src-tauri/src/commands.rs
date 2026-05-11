@@ -381,32 +381,31 @@ pub fn export_database_backup_payload(app: AppHandle) -> Result<DatabaseBackupPa
 
 #[tauri::command]
 pub fn restore_database_from_base64(app: AppHandle, database_base64: String) -> Result<BackupResult, String> {
-    let db_path = database_path(&app)?;
-    if let Some(parent) = db_path.parent() {
-        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    }
-
-    let created_at = Local::now();
-    let backup_dir = preferred_backup_dir(&app).map_err(|error| error.to_string())?;
-    fs::create_dir_all(&backup_dir).map_err(|error| error.to_string())?;
-    let safety_backup = backup_dir.join(format!(
-        "tire-store-before-drive-restore-{}.db",
-        created_at.format("%Y%m%d-%H%M%S")
-    ));
-
-    if db_path.exists() {
-        fs::copy(&db_path, &safety_backup).map_err(|error| error.to_string())?;
-    }
-
     let bytes = general_purpose::STANDARD
         .decode(database_base64.as_bytes())
         .map_err(|error| format!("Invalid backup data: {error}"))?;
-    fs::write(&db_path, bytes).map_err(|error| error.to_string())?;
+    restore_database_bytes(&app, &bytes, "drive")
+}
 
-    Ok(BackupResult {
-        backup_path: safety_backup.display().to_string(),
-        created_at: created_at.to_rfc3339(),
-    })
+#[tauri::command]
+pub fn restore_database_from_path(app: AppHandle, source_path: String) -> Result<BackupResult, String> {
+    let source = PathBuf::from(source_path);
+    if !source.exists() {
+        return Err("선택한 백업 파일을 찾지 못했습니다.".to_string());
+    }
+    if !source.is_file() {
+        return Err("백업 파일만 선택할 수 있습니다.".to_string());
+    }
+    let extension = source
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if extension != "db" && extension != "sqlite" && extension != "sqlite3" {
+        return Err("로컬 복원은 .db, .sqlite, .sqlite3 백업 파일만 지원합니다.".to_string());
+    }
+    let bytes = fs::read(&source).map_err(|error| error.to_string())?;
+    restore_database_bytes(&app, &bytes, "local")
 }
 
 #[tauri::command]
@@ -2821,7 +2820,79 @@ fn copy_database_file(app: &AppHandle, destination: &Path) -> Result<(), String>
         return Err("Database file does not exist yet".to_string());
     }
 
+    checkpoint_database(app)?;
     fs::copy(&db_path, destination).map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+fn restore_database_bytes(app: &AppHandle, bytes: &[u8], source_label: &str) -> Result<BackupResult, String> {
+    if bytes.is_empty() {
+        return Err("백업 파일이 비어 있습니다.".to_string());
+    }
+    if !bytes.starts_with(b"SQLite format 3\0") {
+        return Err("SQLite 백업 파일 형식이 아닙니다.".to_string());
+    }
+
+    let db_path = database_path(app)?;
+    if let Some(parent) = db_path.parent() {
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+
+    checkpoint_database(app)?;
+
+    let created_at = Local::now();
+    let backup_dir = preferred_backup_dir(app).map_err(|error| error.to_string())?;
+    fs::create_dir_all(&backup_dir).map_err(|error| error.to_string())?;
+    let safety_backup = backup_dir.join(format!(
+        "tire-store-before-{}-restore-{}.db",
+        source_label,
+        created_at.format("%Y%m%d-%H%M%S")
+    ));
+
+    if db_path.exists() {
+        fs::copy(&db_path, &safety_backup).map_err(|error| error.to_string())?;
+    }
+
+    remove_sqlite_sidecars(&db_path)?;
+    fs::write(&db_path, bytes).map_err(|error| error.to_string())?;
+    remove_sqlite_sidecars(&db_path)?;
+
+    Ok(BackupResult {
+        backup_path: safety_backup.display().to_string(),
+        created_at: created_at.to_rfc3339(),
+    })
+}
+
+fn checkpoint_database(app: &AppHandle) -> Result<(), String> {
+    let db_path = database_path(app)?;
+    if !db_path.exists() {
+        return Ok(());
+    }
+
+    tauri::async_runtime::block_on(async {
+        let options = SqliteConnectOptions::from_str(&db_path.display().to_string())
+            .map_err(|error| error.to_string())?
+            .create_if_missing(false)
+            .journal_mode(SqliteJournalMode::Wal);
+        let pool = SqlitePool::connect_with(options)
+            .await
+            .map_err(|error| format!("백업 전 DB 저장 상태를 정리하지 못했습니다: {error}"))?;
+        sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
+            .execute(&pool)
+            .await
+            .map_err(|error| format!("백업 전 WAL 체크포인트에 실패했습니다: {error}"))?;
+        pool.close().await;
+        Ok(())
+    })
+}
+
+fn remove_sqlite_sidecars(db_path: &Path) -> Result<(), String> {
+    for suffix in ["-wal", "-shm"] {
+        let sidecar = PathBuf::from(format!("{}{}", db_path.display(), suffix));
+        if sidecar.exists() {
+            fs::remove_file(&sidecar).map_err(|error| error.to_string())?;
+        }
+    }
     Ok(())
 }
 

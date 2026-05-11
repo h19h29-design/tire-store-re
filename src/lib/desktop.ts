@@ -57,6 +57,10 @@ export function restoreDatabaseFromBase64(databaseBase64: string) {
   return invoke<BackupResult>('restore_database_from_base64', { databaseBase64 })
 }
 
+export function restoreDatabaseFromPath(sourcePath: string) {
+  return invoke<BackupResult>('restore_database_from_path', { sourcePath })
+}
+
 export function savePlatformSecret(platformCode: string, secret: string) {
   return invoke<void>('save_platform_secret', { platformCode, secret })
 }

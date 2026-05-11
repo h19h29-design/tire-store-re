@@ -56,6 +56,14 @@ export function getDatabase() {
   return dbPromise
 }
 
+export async function closeDatabase() {
+  const db = await dbPromise
+  dbPromise = null
+  if (db) {
+    await db.close()
+  }
+}
+
 type CountRow = {
   count: number
 }
