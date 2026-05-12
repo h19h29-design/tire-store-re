@@ -981,37 +981,32 @@
 
 .sales-table-wrap .data-table th:nth-child(1),
 .sales-table-wrap .data-table td:nth-child(1) {
-  width: 22%;
+  width: 30%;
 }
 
 .sales-table-wrap .data-table th:nth-child(2),
 .sales-table-wrap .data-table td:nth-child(2) {
-  width: 12%;
+  width: 16%;
 }
 
 .sales-table-wrap .data-table th:nth-child(3),
 .sales-table-wrap .data-table td:nth-child(3) {
-  width: 7%;
+  width: 8%;
 }
 
 .sales-table-wrap .data-table th:nth-child(4),
 .sales-table-wrap .data-table td:nth-child(4) {
-  width: 12%;
+  width: 16%;
 }
 
 .sales-table-wrap .data-table th:nth-child(5),
 .sales-table-wrap .data-table td:nth-child(5) {
-  width: 15%;
+  width: 20%;
   white-space: nowrap;
 }
 
 .sales-table-wrap .data-table th:nth-child(6),
 .sales-table-wrap .data-table td:nth-child(6) {
-  width: 22%;
-}
-
-.sales-table-wrap .data-table th:nth-child(7),
-.sales-table-wrap .data-table td:nth-child(7) {
   width: 10%;
 }
 

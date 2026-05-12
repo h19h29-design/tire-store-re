@@ -31,6 +31,7 @@ export type SaveSaleInput = {
   alignmentAmount: number
   serviceDescription: string
   serviceAmount: number
+  totalAmount: number
   lines: SaleDraftLine[]
 }
 
@@ -319,12 +320,11 @@ async function insertSaleContents(input: {
   const applyInventoryEffect = input.applyInventoryEffect !== false
 
   for (const line of input.lines) {
-    const lineTotal = line.lineTotalOverride ?? line.unitPrice * line.quantity
-    const unitPrice =
-      line.quantity > 0 ? Math.max(0, Math.round(lineTotal / line.quantity)) : Math.max(0, line.unitPrice)
     const persistedItemId = getPersistedItemId(line)
     const costPriceSnapshot = persistedItemId ? input.costPriceSnapshots.get(persistedItemId) ?? null : null
     const priceSnapshot = getSalePriceSnapshot(line)
+    const unitPrice = priceSnapshot.discountedUnitPrice
+    const lineTotal = unitPrice * line.quantity
 
     await execute(
       `INSERT INTO sale_lines (
@@ -497,14 +497,11 @@ export async function saveSale(input: SaveSaleInput) {
   await ensureSalesSchema()
   await ensureSaleLineCostSnapshotSchema()
 
-  const totalAmount =
-    input.lines.reduce((sum, line) => sum + (line.lineTotalOverride ?? line.unitPrice * line.quantity), 0) +
-    input.alignmentAmount +
-    input.serviceAmount
+  const totalAmount = toSafeWholeNumber(input.totalAmount)
   const odometer = toSafeWholeNumber(input.odometer)
 
   if (totalAmount <= 0) {
-    throw new Error('판매 항목이나 작업비가 없습니다.')
+    throw new Error('실제 판매금액을 입력해 주세요.')
   }
 
   await validateLineQuantities(input.lines)
@@ -740,14 +737,11 @@ export async function updateSale(saleId: number, input: SaveSaleInput) {
   await ensureSalesSchema()
   await ensureSaleLineCostSnapshotSchema()
 
-  const totalAmount =
-    input.lines.reduce((sum, line) => sum + (line.lineTotalOverride ?? line.unitPrice * line.quantity), 0) +
-    input.alignmentAmount +
-    input.serviceAmount
+  const totalAmount = toSafeWholeNumber(input.totalAmount)
   const odometer = toSafeWholeNumber(input.odometer)
 
   if (totalAmount <= 0) {
-    throw new Error('판매 항목이나 작업비가 없습니다.')
+    throw new Error('실제 판매금액을 입력해 주세요.')
   }
 
   const existingSale = await selectFirst<Pick<SaleHeaderRow, 'saleNumber' | 'soldAt'>>(

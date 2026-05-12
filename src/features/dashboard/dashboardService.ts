@@ -231,15 +231,16 @@ function buildSummary(
   linesRow: SummaryLinesRow | null,
   expenseRow: ExpenseSumRow | null,
 ): DashboardSummary {
-  const tireSalesAmount = normalizeNumber(linesRow?.tireSalesAmount)
+  const totalAmount = normalizeNumber(salesRow?.totalAmount)
   const tireCostAmount = normalizeNumber(linesRow?.tireCostAmount)
   const serviceAmount = normalizeNumber(linesRow?.serviceAmount)
+  const tireSalesAmount = Math.max(0, totalAmount - serviceAmount)
   const expenseAmount = normalizeNumber(expenseRow?.expenseAmount)
   const cardFeeAmount = normalizeNumber(salesRow?.cardFeeAmount)
 
   return {
     salesCount: normalizeNumber(salesRow?.salesCount),
-    totalAmount: normalizeNumber(salesRow?.totalAmount),
+    totalAmount,
     tireQuantity: normalizeNumber(linesRow?.tireQuantity),
     cardAmount: normalizeNumber(salesRow?.cardAmount),
     naverAmount: normalizeNumber(salesRow?.naverAmount),
@@ -250,7 +251,7 @@ function buildSummary(
     tireCostAmount,
     expenseAmount,
     tireProfit: tireSalesAmount - tireCostAmount,
-    netProfit: tireSalesAmount + serviceAmount - tireCostAmount - cardFeeAmount - expenseAmount,
+    netProfit: totalAmount - tireCostAmount - cardFeeAmount - expenseAmount,
   }
 }
 

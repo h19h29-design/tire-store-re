@@ -21,14 +21,9 @@ type SalesFieldKey =
   | 'sales-naver-amount'
   | 'sales-cash-amount'
   | `sales-line-quantity:${number}`
-  | `sales-line-total:${number}`
 
 function getSalesLineQuantityFieldKey(itemId: number): SalesFieldKey {
   return `sales-line-quantity:${itemId}`
-}
-
-function getSalesLineTotalFieldKey(itemId: number): SalesFieldKey {
-  return `sales-line-total:${itemId}`
 }
 
 function sanitizeAmountInput(value: string) {
@@ -62,10 +57,6 @@ function formatWonToInputAmount(value: number) {
   }
 
   return String(Math.round(value))
-}
-
-function formatDifferenceLabel(value: number) {
-  return `${formatMoney(Math.abs(value))}원`
 }
 
 function getCurrentSaleDateValue() {
@@ -130,7 +121,7 @@ function getEditableMaxQuantity(line: SaleDraftLine) {
 
 function resolveCartPricing(
   cart: SaleDraftLine[],
-  options: {
+  _options: {
     preserveExistingPricing?: boolean
   } = {},
 ) {
@@ -138,31 +129,12 @@ function resolveCartPricing(
     return []
   }
 
-  const preserveExistingPricing = options.preserveExistingPricing === true
-
-  if (preserveExistingPricing) {
-    return cart.map((line) => {
-      const quantity = Math.max(0, line.quantity)
-      const lineTotal = line.lineTotalOverride ?? Math.max(0, line.unitPrice) * quantity
-      const unitPrice =
-        quantity > 0 ? Math.max(0, Math.round(lineTotal / quantity)) : Math.max(0, Math.round(line.unitPrice))
-      return {
-        ...line,
-        unitPrice,
-        lineTotalOverride: lineTotal,
-      }
-    })
-  }
-
   return cart.map((line) => {
     const wholesaleUnitPrice = getWholesaleUnitPrice(line)
-    const lineTotal = line.lineTotalOverride ?? wholesaleUnitPrice * Math.max(0, line.quantity)
-    const unitPrice =
-      line.quantity > 0 ? Math.max(0, Math.round(lineTotal / line.quantity)) : Math.max(0, line.unitPrice)
     return {
       ...line,
-      unitPrice,
-      lineTotalOverride: line.lineTotalOverride ?? null,
+      unitPrice: wholesaleUnitPrice,
+      lineTotalOverride: null,
     }
   })
 }
@@ -498,24 +470,6 @@ export function SalesPage() {
     )
   }
 
-  function updateLineSaleTotal(itemId: number, lineTotal: number) {
-    setCart((currentCart) =>
-      currentCart.map((line) => {
-        if (line.id !== itemId) {
-          return line
-        }
-
-        const safeTotal = Math.max(0, Math.round(lineTotal))
-        const quantity = Math.max(1, line.quantity)
-        return {
-          ...line,
-          unitPrice: Math.max(0, Math.round(safeTotal / quantity)),
-          lineTotalOverride: safeTotal,
-        }
-      }),
-    )
-  }
-
   function removeLine(itemId: number) {
     setCart((currentCart) => currentCart.filter((line) => line.id !== itemId))
   }
@@ -547,17 +501,20 @@ export function SalesPage() {
   const resolvedCart = resolveCartPricing(cart, {
     preserveExistingPricing: isEditMode,
   })
-  const tireTotal = resolvedCart.reduce((sum, line) => sum + (line.lineTotalOverride ?? line.unitPrice * line.quantity), 0)
+  const wholesaleTireTotal = resolvedCart.reduce(
+    (sum, line) => sum + getWholesaleUnitPrice(line) * Math.max(0, line.quantity),
+    0,
+  )
   const effectiveExtraServiceAmount = isPaymentOnlySale ? rawPaymentTotal : rawExtraServiceAmount
-  const totalAmount = tireTotal + alignmentServiceAmount + effectiveExtraServiceAmount
   const effectiveCardAmount = rawCardAmount
   const effectiveNaverAmount = rawNaverAmount
   const effectiveCashAmount = rawCashAmount
   const paymentTotal = effectiveCardAmount + effectiveNaverAmount + effectiveCashAmount
-  const paymentDiff = paymentTotal - totalAmount
+  const totalAmount = paymentTotal
+  const profitBeforeFees = totalAmount - wholesaleTireTotal
   const cardFeeAmount = Math.round(effectiveCardAmount * 0.03) + Math.round(effectiveNaverAmount * 0.05)
   const lowStockLabel = lowStockThreshold > 0 ? `${lowStockThreshold.toLocaleString('ko-KR')}개 이하` : '사용 안 함'
-  const requiresPaymentCheck = totalAmount > 0 && paymentDiff !== 0
+  const requiresPaymentCheck = (hasSelectedItems || explicitServiceTotal > 0) && paymentTotal <= 0
 
   const activeFieldErrors: FieldValidationMap<SalesFieldKey> = { ...fieldErrors }
   const invalidQuantityKeys = new Set(
@@ -565,13 +522,8 @@ export function SalesPage() {
       .filter((line) => !Number.isFinite(line.quantity) || line.quantity <= 0)
       .map((line) => getSalesLineQuantityFieldKey(line.id)),
   )
-  const invalidLineTotalKeys = new Set(
-    resolvedCart
-      .filter((line) => line.quantity > 0 && (line.lineTotalOverride ?? line.unitPrice * line.quantity) <= 0)
-      .map((line) => getSalesLineTotalFieldKey(line.id)),
-  )
 
-  if (totalAmount > 0) {
+  if (hasSelectedItems || explicitServiceTotal > 0 || totalAmount > 0) {
     delete activeFieldErrors['sales-search']
   }
 
@@ -585,9 +537,6 @@ export function SalesPage() {
 
   for (const key of Object.keys(activeFieldErrors) as SalesFieldKey[]) {
     if (key.startsWith('sales-line-quantity:') && !invalidQuantityKeys.has(key)) {
-      delete activeFieldErrors[key]
-    }
-    if (key.startsWith('sales-line-total:') && !invalidLineTotalKeys.has(key)) {
       delete activeFieldErrors[key]
     }
   }
@@ -604,11 +553,20 @@ export function SalesPage() {
     const nextFieldErrors: FieldValidationMap<SalesFieldKey> = {}
     const fieldOrder: SalesFieldKey[] = []
 
-    if (totalAmount <= 0) {
-      const message = '판매 합계가 0원입니다. 타이어를 선택하거나 작업비를 입력해 주세요.'
+    if (!hasSelectedItems && explicitServiceTotal <= 0 && rawPaymentTotal <= 0) {
+      const message = '타이어를 선택하거나 작업비/실제 판매금액을 입력해 주세요.'
       issues.push(message)
       nextFieldErrors['sales-search'] = message
       fieldOrder.push('sales-search')
+    }
+
+    if (requiresPaymentCheck) {
+      const message = '실제 판매금액을 카드/네이버/현금 중 하나에 입력해 주세요.'
+      issues.push(message)
+      nextFieldErrors['sales-card-amount'] = message
+      nextFieldErrors['sales-naver-amount'] = message
+      nextFieldErrors['sales-cash-amount'] = message
+      fieldOrder.push('sales-card-amount', 'sales-naver-amount', 'sales-cash-amount')
     }
 
     const invalidQuantityLines = cart.filter((line) => !Number.isFinite(line.quantity) || line.quantity <= 0)
@@ -620,29 +578,6 @@ export function SalesPage() {
         nextFieldErrors[key] = '수량은 1개 이상이어야 합니다.'
         fieldOrder.push(key)
       }
-    }
-
-    const invalidLineTotalLines = resolvedCart.filter(
-      (line) => line.quantity > 0 && (line.lineTotalOverride ?? line.unitPrice * line.quantity) <= 0,
-    )
-    if (invalidLineTotalLines.length > 0) {
-      const message = '판매가는 1원 이상으로 입력해 주세요.'
-      issues.push(message)
-      for (const line of invalidLineTotalLines) {
-        const key = getSalesLineTotalFieldKey(line.id)
-        nextFieldErrors[key] = message
-        fieldOrder.push(key)
-      }
-    }
-
-    if (requiresPaymentCheck) {
-      const direction = paymentDiff > 0 ? '초과' : '부족'
-      const message = `결제 합계가 판매 합계와 다릅니다. 현재 ${formatDifferenceLabel(paymentDiff)} ${direction} 상태입니다.`
-      issues.push(message)
-      nextFieldErrors['sales-card-amount'] = message
-      nextFieldErrors['sales-naver-amount'] = message
-      nextFieldErrors['sales-cash-amount'] = message
-      fieldOrder.push('sales-card-amount', 'sales-naver-amount', 'sales-cash-amount')
     }
 
     if (issues.length > 0) {
@@ -673,6 +608,7 @@ export function SalesPage() {
         alignmentAmount: alignmentServiceAmount,
         serviceDescription,
         serviceAmount: effectiveExtraServiceAmount,
+        totalAmount,
         lines: resolvedCart.filter((line) => line.quantity > 0),
       }
 
@@ -778,7 +714,7 @@ export function SalesPage() {
               </div>
               <div>
                 <strong>{formatMoney(totalAmount)}원</strong>
-                <span>총 결제</span>
+                <span>판매금액</span>
               </div>
             </div>
           </div>
@@ -792,7 +728,6 @@ export function SalesPage() {
                   <th>재고</th>
                   <th>수량</th>
                   <th>도매가</th>
-                  <th>판매가</th>
                   <th />
                 </tr>
               </thead>
@@ -800,9 +735,6 @@ export function SalesPage() {
                 {resolvedCart.map((line) => {
                   const wholesaleUnitPrice = getWholesaleUnitPrice(line)
                   const wholesaleTotal = wholesaleUnitPrice * Math.max(0, line.quantity)
-                  const lineTotal = line.lineTotalOverride ?? line.unitPrice * line.quantity
-                  const lineUnitPrice = line.quantity > 0 ? Math.round(lineTotal / line.quantity) : lineTotal
-                  const lineTotalError = activeFieldErrors[getSalesLineTotalFieldKey(line.id)]
 
                   return (
                     <tr key={line.id}>
@@ -834,24 +766,6 @@ export function SalesPage() {
                         <small className="field-hint">단가 {formatMoney(wholesaleUnitPrice)}원</small>
                       </td>
                       <td>
-                        <div className="table-input-wrap">
-                          <input
-                            aria-invalid={Boolean(lineTotalError)}
-                            className="table-input"
-                            data-field-error-target={getSalesLineTotalFieldKey(line.id)}
-                            inputMode="numeric"
-                            onChange={(event) => updateLineSaleTotal(line.id, parseAmount(event.target.value))}
-                            type="text"
-                            value={formatWonToInputAmount(lineTotal)}
-                          />
-                          {lineTotalError ? (
-                            <small className="field-error-text">{lineTotalError}</small>
-                          ) : (
-                            <small className="field-hint">판매단가 {formatMoney(lineUnitPrice)}원</small>
-                          )}
-                        </div>
-                      </td>
-                      <td>
                         <button className="table-action" onClick={() => removeLine(line.id)} type="button">
                           삭제
                         </button>
@@ -861,7 +775,7 @@ export function SalesPage() {
                 })}
                 {resolvedCart.length === 0 ? (
                   <tr>
-                    <td className="empty-cell" colSpan={7}>
+                    <td className="empty-cell" colSpan={6}>
                       왼쪽 목록에서 품목을 눌러 판매표를 만들어 주세요.
                     </td>
                   </tr>
@@ -1027,20 +941,24 @@ export function SalesPage() {
             <div className="content-grid">
               <div className="summary-panel summary-panel-tight">
                 <div>
-                  <strong>타이어 합계</strong>
-                  <span>{formatMoney(tireTotal)}원</span>
+                  <strong>도매가 합계</strong>
+                  <span>{formatMoney(wholesaleTireTotal)}원</span>
                 </div>
                 <div>
-                  <strong>얼라이먼트</strong>
+                  <strong>얼라이먼트 입력</strong>
                   <span>{formatMoney(alignmentServiceAmount)}원</span>
                 </div>
                 <div>
-                  <strong>추가 작업비</strong>
+                  <strong>추가 작업비 입력</strong>
                   <span>{formatMoney(effectiveExtraServiceAmount)}원</span>
                 </div>
                 <div>
-                  <strong>총합계</strong>
+                  <strong>판매금액</strong>
                   <span>{formatMoney(totalAmount)}원</span>
+                </div>
+                <div>
+                  <strong>판매금액 - 도매가</strong>
+                  <span>{formatMoney(profitBeforeFees)}원</span>
                 </div>
                 <div>
                   <strong>결제 수수료 예상</strong>
@@ -1050,8 +968,10 @@ export function SalesPage() {
 
               <div>
                 <div className={`payment-check${paymentError ? ' has-error' : ''}`}>
-                  <span>결제 합계 차이</span>
-                  <strong className={paymentDiff === 0 ? 'ok-text' : 'warn-text'}>{formatMoney(paymentDiff)}원</strong>
+                  <span>판매금액 - 도매가</span>
+                  <strong className={profitBeforeFees >= 0 ? 'ok-text' : 'warn-text'}>
+                    {formatMoney(profitBeforeFees)}원
+                  </strong>
                   {paymentError ? <small className="field-error-text">{paymentError}</small> : null}
                 </div>
 
