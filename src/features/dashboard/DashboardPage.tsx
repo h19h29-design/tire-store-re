@@ -691,7 +691,7 @@ export function DashboardPage() {
             <p className="eyebrow">{appliedRangeMode === 'date' ? '조회 기준일' : '오늘'}</p>
             <h3>{appliedRangeMode === 'date' ? `${headlineBaseDate} 판매 요약` : '오늘 판매 요약'}</h3>
             <p style={{ margin: '0.5rem 0 0', color: 'var(--muted)' }}>
-              순이익 = 타이어 매출 + 작업비 - 할인적용 원가 - 카드수수료 - 일일 지출
+              순이익 = 판매가 매출 + 작업비 - 도매가 - 카드수수료 - 일일 지출
             </p>
           </div>
           <strong className="hero-amount">{formatMoney(focusSummary?.netProfit ?? 0)}원</strong>
@@ -713,11 +713,11 @@ export function DashboardPage() {
             </strong>
           </article>
           <article className="stat-card">
-            <p className="stat-label">타이어 매출</p>
+            <p className="stat-label">타이어 판매가 매출</p>
             <strong className="stat-value small-value">{formatMoney(focusSummary?.tireSalesAmount ?? 0)}원</strong>
           </article>
           <article className="stat-card">
-            <p className="stat-label">타이어 원가</p>
+            <p className="stat-label">타이어 도매가</p>
             <strong className="stat-value small-value">{formatMoney(focusSummary?.tireCostAmount ?? 0)}원</strong>
           </article>
           <article className="stat-card">

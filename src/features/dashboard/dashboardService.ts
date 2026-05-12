@@ -44,6 +44,7 @@ type SummaryLineCostRow = {
   quantity: number
   lineTotal: number
   costPriceSnapshot: number
+  discountedUnitPriceSnapshot: number
   brandName: string
   patternName: string
   productName: string
@@ -286,9 +287,11 @@ function buildSummaryLines(
           productDiscountMap.get(normalizeText(row.patternName)) ?? 0,
           productDiscountMap.get(normalizeText(row.productName)) ?? 0,
         )
-        const discountedCost = Math.round(
-          normalizeNumber(row.costPriceSnapshot) * (100 - effectiveDiscountRate) / 100,
-        )
+        const snapshotWholesalePrice = normalizeNumber(row.discountedUnitPriceSnapshot)
+        const discountedCost =
+          snapshotWholesalePrice > 0
+            ? snapshotWholesalePrice
+            : Math.round(normalizeNumber(row.costPriceSnapshot) * (100 - effectiveDiscountRate) / 100)
 
         summary.tireQuantity += quantity
         summary.tireSalesAmount += lineTotal
@@ -360,6 +363,7 @@ async function loadSummaryByQuery(
           WHEN COALESCE(sale_lines.cost_price_snapshot, 0) > 0 THEN COALESCE(sale_lines.cost_price_snapshot, 0)
           ELSE COALESCE(items.default_cost_price, 0)
         END AS costPriceSnapshot,
+        COALESCE(sale_lines.discounted_unit_price_snapshot, 0) AS discountedUnitPriceSnapshot,
         COALESCE(items.brand_name, '') AS brandName,
         COALESCE(items.pattern_name, '') AS patternName,
         COALESCE(items.product_name, '') AS productName,

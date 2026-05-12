@@ -345,7 +345,7 @@ export function CustomersPage() {
                 <th>주행거리(키로수)</th>
                 <th>최근 판매 내역</th>
                 <th>최근 판매수량</th>
-                <th>최근 매출금액</th>
+                <th>최근 판매금액</th>
                 <th>최근 결제구분</th>
                 <th />
               </tr>
@@ -463,7 +463,7 @@ export function CustomersPage() {
                     <th>차량</th>
                     <th>작업내역</th>
                     <th>타이어 수량</th>
-                    <th>매출금액</th>
+                    <th>판매금액</th>
                     <th>결제구분</th>
                     <th>비고</th>
                   </tr>

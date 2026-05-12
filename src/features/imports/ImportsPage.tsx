@@ -219,7 +219,7 @@ export function ImportsPage() {
 
     try {
       setApplyingVendorPrice(true)
-      setMessage('공급사 가격표의 부가세 포함 금액을 재고 원가에 반영하는 중입니다.')
+      setMessage('공급사 가격표의 부가세 포함 금액을 재고 노출가격에 반영하는 중입니다.')
       const applyResult = await applyVendorPriceWorkbook(vendorPricePath.trim())
       setVendorImportResult(applyResult)
       setVendorPreview(await parseVendorPriceWorkbook(vendorPricePath.trim()))
@@ -358,7 +358,7 @@ export function ImportsPage() {
         <article className="panel">
           <h3>공급사 가격표 반영</h3>
           <p className="page-copy" style={{ marginTop: 0 }}>
-            업체에서 받은 가격표 엑셀의 `부가세 포함` 금액을 현재 재고 품목의 원가로 반영합니다. 이번 버전은
+            업체에서 받은 가격표 엑셀의 `부가세 포함` 금액을 현재 재고 품목의 노출가격으로 반영합니다. 이번 버전은
             `브랜드 / 상품명(또는 패턴코드) / 규격`을 기준으로 자동 매칭하며, 형식이 크게 다른 업체 파일은 다음에
             템플릿 방식으로 더 확장할 수 있습니다.
           </p>
@@ -394,7 +394,7 @@ export function ImportsPage() {
               onClick={handleApplyVendorPrice}
               type="button"
             >
-              {applyingVendorPrice ? '반영 중...' : '재고 원가 반영'}
+              {applyingVendorPrice ? '반영 중...' : '재고 노출가격 반영'}
             </button>
           </div>
 
@@ -484,7 +484,7 @@ export function ImportsPage() {
           ) : (
             <div className="empty-state-box">
               <strong>가격표 파일을 선택한 뒤 미리보기를 실행해 주세요.</strong>
-              <p>현재 재고에 몇 건이 매칭되는지 먼저 확인한 뒤 원가 반영을 진행할 수 있습니다.</p>
+              <p>현재 재고에 몇 건이 매칭되는지 먼저 확인한 뒤 노출가격 반영을 진행할 수 있습니다.</p>
             </div>
           )}
 
@@ -492,7 +492,7 @@ export function ImportsPage() {
             <div className="note-box" style={{ marginTop: '1rem' }}>
               <strong>최근 반영 결과</strong>
               <p>
-                {vendorImportResult.updatedItemCount.toLocaleString('ko-KR')}개 품목 원가를 갱신했고, 가격표 행 기준으로는{' '}
+                {vendorImportResult.updatedItemCount.toLocaleString('ko-KR')}개 품목 노출가격을 갱신했고, 가격표 행 기준으로는{' '}
                 {vendorImportResult.updatedRowCount.toLocaleString('ko-KR')}건을 반영했습니다. 미매칭은{' '}
                 {vendorImportResult.unmatchedRowCount.toLocaleString('ko-KR')}건입니다.
               </p>

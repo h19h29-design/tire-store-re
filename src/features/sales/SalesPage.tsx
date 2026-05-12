@@ -7,7 +7,7 @@ import {
   showValidationDialog,
   type FieldValidationMap,
 } from '../../lib/dialogs'
-import { formatMoney, getCurrentSeoulDateTimeValue, scaleMoneyInputToWon } from '../../lib/normalize'
+import { formatMoney, getCurrentSeoulDateTimeValue } from '../../lib/normalize'
 import type { InventoryListRow, PlateLookupRow } from '../../lib/types'
 import { searchInventoryItems } from '../inventory/inventoryService'
 import { getDiscountedPrice } from '../publicQuote/quoteUtils'
@@ -21,9 +21,14 @@ type SalesFieldKey =
   | 'sales-naver-amount'
   | 'sales-cash-amount'
   | `sales-line-quantity:${number}`
+  | `sales-line-total:${number}`
 
 function getSalesLineQuantityFieldKey(itemId: number): SalesFieldKey {
   return `sales-line-quantity:${itemId}`
+}
+
+function getSalesLineTotalFieldKey(itemId: number): SalesFieldKey {
+  return `sales-line-total:${itemId}`
 }
 
 function sanitizeAmountInput(value: string) {
@@ -40,7 +45,11 @@ function sanitizeAmountInput(value: string) {
 }
 
 function parseAmount(value: string) {
-  return scaleMoneyInputToWon(sanitizeAmountInput(value))
+  const numericValue = Number(sanitizeAmountInput(value) || '0')
+  if (!Number.isFinite(numericValue)) {
+    return 0
+  }
+  return Math.max(0, Math.round(numericValue))
 }
 
 function getAmountFieldPreview(value: string) {
@@ -52,8 +61,7 @@ function formatWonToInputAmount(value: number) {
     return ''
   }
 
-  const scaled = (value / 1000).toFixed(3).replace(/\.?0+$/, '')
-  return scaled === '0' ? '' : scaled
+  return String(Math.round(value))
 }
 
 function formatDifferenceLabel(value: number) {
@@ -92,6 +100,20 @@ function isLowStock(quantityAvailable: number, threshold: number) {
 
 function getSaleBasePrice(item: Pick<InventoryListRow, 'defaultCostPrice' | 'defaultSalePrice'>) {
   return item.defaultCostPrice > 0 ? item.defaultCostPrice : item.defaultSalePrice
+}
+
+function getWholesaleUnitPrice(
+  item: Pick<InventoryListRow, 'defaultCostPrice' | 'defaultSalePrice' | 'defaultDiscountRate'> &
+    Pick<SaleDraftLine, 'saleBasePriceSnapshot' | 'saleDiscountRateSnapshot' | 'discountedUnitPriceSnapshot'>,
+) {
+  const snapshotPrice = Math.max(0, Number(item.discountedUnitPriceSnapshot ?? 0))
+  if (snapshotPrice > 0) {
+    return snapshotPrice
+  }
+
+  const exposurePrice = Math.max(0, Number(item.saleBasePriceSnapshot ?? getSaleBasePrice(item)))
+  const discountRate = Math.max(0, Math.min(100, Number(item.saleDiscountRateSnapshot ?? item.defaultDiscountRate ?? 0)))
+  return getDiscountedPrice(exposurePrice, discountRate)
 }
 
 function isEditableElement(target: EventTarget | null) {
@@ -133,11 +155,14 @@ function resolveCartPricing(
   }
 
   return cart.map((line) => {
-    const unitPrice = getDiscountedPrice(getSaleBasePrice(line), line.defaultDiscountRate)
+    const wholesaleUnitPrice = getWholesaleUnitPrice(line)
+    const lineTotal = line.lineTotalOverride ?? wholesaleUnitPrice * Math.max(0, line.quantity)
+    const unitPrice =
+      line.quantity > 0 ? Math.max(0, Math.round(lineTotal / line.quantity)) : Math.max(0, line.unitPrice)
     return {
       ...line,
       unitPrice,
-      lineTotalOverride: unitPrice * Math.max(0, line.quantity),
+      lineTotalOverride: line.lineTotalOverride ?? null,
     }
   })
 }
@@ -453,7 +478,7 @@ export function SalesPage() {
         {
           ...item,
           quantity: item.quantityAvailable > 0 ? 1 : 0,
-          unitPrice: getDiscountedPrice(getSaleBasePrice(item), item.defaultDiscountRate),
+          unitPrice: getWholesaleUnitPrice(item),
           lineTotalOverride: null,
         },
       ]
@@ -470,6 +495,24 @@ export function SalesPage() {
             }
           : line,
       ),
+    )
+  }
+
+  function updateLineSaleTotal(itemId: number, lineTotal: number) {
+    setCart((currentCart) =>
+      currentCart.map((line) => {
+        if (line.id !== itemId) {
+          return line
+        }
+
+        const safeTotal = Math.max(0, Math.round(lineTotal))
+        const quantity = Math.max(1, line.quantity)
+        return {
+          ...line,
+          unitPrice: Math.max(0, Math.round(safeTotal / quantity)),
+          lineTotalOverride: safeTotal,
+        }
+      }),
     )
   }
 
@@ -522,6 +565,11 @@ export function SalesPage() {
       .filter((line) => !Number.isFinite(line.quantity) || line.quantity <= 0)
       .map((line) => getSalesLineQuantityFieldKey(line.id)),
   )
+  const invalidLineTotalKeys = new Set(
+    resolvedCart
+      .filter((line) => line.quantity > 0 && (line.lineTotalOverride ?? line.unitPrice * line.quantity) <= 0)
+      .map((line) => getSalesLineTotalFieldKey(line.id)),
+  )
 
   if (totalAmount > 0) {
     delete activeFieldErrors['sales-search']
@@ -537,6 +585,9 @@ export function SalesPage() {
 
   for (const key of Object.keys(activeFieldErrors) as SalesFieldKey[]) {
     if (key.startsWith('sales-line-quantity:') && !invalidQuantityKeys.has(key)) {
+      delete activeFieldErrors[key]
+    }
+    if (key.startsWith('sales-line-total:') && !invalidLineTotalKeys.has(key)) {
       delete activeFieldErrors[key]
     }
   }
@@ -567,6 +618,19 @@ export function SalesPage() {
       for (const line of invalidQuantityLines) {
         const key = getSalesLineQuantityFieldKey(line.id)
         nextFieldErrors[key] = '수량은 1개 이상이어야 합니다.'
+        fieldOrder.push(key)
+      }
+    }
+
+    const invalidLineTotalLines = resolvedCart.filter(
+      (line) => line.quantity > 0 && (line.lineTotalOverride ?? line.unitPrice * line.quantity) <= 0,
+    )
+    if (invalidLineTotalLines.length > 0) {
+      const message = '판매가는 1원 이상으로 입력해 주세요.'
+      issues.push(message)
+      for (const line of invalidLineTotalLines) {
+        const key = getSalesLineTotalFieldKey(line.id)
+        nextFieldErrors[key] = message
         fieldOrder.push(key)
       }
     }
@@ -659,7 +723,7 @@ export function SalesPage() {
 
           <div className="result-list compact-result-list">
             {results.map((item) => {
-              const suggestedPrice = getDiscountedPrice(getSaleBasePrice(item), item.defaultDiscountRate)
+              const wholesalePrice = getWholesaleUnitPrice(item)
 
               return (
                 <button
@@ -677,9 +741,9 @@ export function SalesPage() {
                     <p style={{ marginTop: '0.2rem' }}>{item.productName || '상품명 미입력'}</p>
                   </div>
                   <div className="result-meta">
-                    <span>{suggestedPrice > 0 ? `${formatMoney(suggestedPrice)}원` : '기준가 미입력'}</span>
+                    <span>{wholesalePrice > 0 ? `도매가 ${formatMoney(wholesalePrice)}원` : '노출가격 미입력'}</span>
                     {item.defaultDiscountRate > 0 ? (
-                      <span className="ok-text">할인 {item.defaultDiscountRate}% 적용</span>
+                      <span className="ok-text">도매 할인 {item.defaultDiscountRate}% 적용</span>
                     ) : null}
                     {isLowStock(item.quantityAvailable, lowStockThreshold) ? (
                       <span className="warn-text">저재고</span>
@@ -727,47 +791,77 @@ export function SalesPage() {
                   <th>규격</th>
                   <th>재고</th>
                   <th>수량</th>
-                  <th>예상금액</th>
+                  <th>도매가</th>
+                  <th>판매가</th>
                   <th />
                 </tr>
               </thead>
               <tbody>
-                {resolvedCart.map((line) => (
-                  <tr key={line.id}>
-                    <td>
-                      {line.brandName} {line.patternName}
-                    </td>
-                    <td>{line.sizeLabel}</td>
-                    <td>{line.quantityAvailable}</td>
-                    <td>
-                      <div className="table-input-wrap">
-                        <input
-                          aria-invalid={Boolean(activeFieldErrors[getSalesLineQuantityFieldKey(line.id)])}
-                          className="table-input"
-                          data-field-error-target={getSalesLineQuantityFieldKey(line.id)}
-                          min={1}
-                          onChange={(event) => updateLineQuantity(line.id, Number(event.target.value))}
-                          type="number"
-                          value={line.quantity}
-                        />
-                        {activeFieldErrors[getSalesLineQuantityFieldKey(line.id)] ? (
-                          <small className="field-error-text">
-                            {activeFieldErrors[getSalesLineQuantityFieldKey(line.id)]}
-                          </small>
-                        ) : null}
-                      </div>
-                    </td>
-                    <td>{formatMoney(line.lineTotalOverride ?? line.unitPrice * line.quantity)}원</td>
-                    <td>
-                      <button className="table-action" onClick={() => removeLine(line.id)} type="button">
-                        삭제
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {resolvedCart.map((line) => {
+                  const wholesaleUnitPrice = getWholesaleUnitPrice(line)
+                  const wholesaleTotal = wholesaleUnitPrice * Math.max(0, line.quantity)
+                  const lineTotal = line.lineTotalOverride ?? line.unitPrice * line.quantity
+                  const lineUnitPrice = line.quantity > 0 ? Math.round(lineTotal / line.quantity) : lineTotal
+                  const lineTotalError = activeFieldErrors[getSalesLineTotalFieldKey(line.id)]
+
+                  return (
+                    <tr key={line.id}>
+                      <td>
+                        {line.brandName} {line.patternName}
+                      </td>
+                      <td>{line.sizeLabel}</td>
+                      <td>{line.quantityAvailable}</td>
+                      <td>
+                        <div className="table-input-wrap">
+                          <input
+                            aria-invalid={Boolean(activeFieldErrors[getSalesLineQuantityFieldKey(line.id)])}
+                            className="table-input"
+                            data-field-error-target={getSalesLineQuantityFieldKey(line.id)}
+                            min={1}
+                            onChange={(event) => updateLineQuantity(line.id, Number(event.target.value))}
+                            type="number"
+                            value={line.quantity}
+                          />
+                          {activeFieldErrors[getSalesLineQuantityFieldKey(line.id)] ? (
+                            <small className="field-error-text">
+                              {activeFieldErrors[getSalesLineQuantityFieldKey(line.id)]}
+                            </small>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td>
+                        <strong>{formatMoney(wholesaleTotal)}원</strong>
+                        <small className="field-hint">단가 {formatMoney(wholesaleUnitPrice)}원</small>
+                      </td>
+                      <td>
+                        <div className="table-input-wrap">
+                          <input
+                            aria-invalid={Boolean(lineTotalError)}
+                            className="table-input"
+                            data-field-error-target={getSalesLineTotalFieldKey(line.id)}
+                            inputMode="numeric"
+                            onChange={(event) => updateLineSaleTotal(line.id, parseAmount(event.target.value))}
+                            type="text"
+                            value={formatWonToInputAmount(lineTotal)}
+                          />
+                          {lineTotalError ? (
+                            <small className="field-error-text">{lineTotalError}</small>
+                          ) : (
+                            <small className="field-hint">판매단가 {formatMoney(lineUnitPrice)}원</small>
+                          )}
+                        </div>
+                      </td>
+                      <td>
+                        <button className="table-action" onClick={() => removeLine(line.id)} type="button">
+                          삭제
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
                 {resolvedCart.length === 0 ? (
                   <tr>
-                    <td className="empty-cell" colSpan={6}>
+                    <td className="empty-cell" colSpan={7}>
                       왼쪽 목록에서 품목을 눌러 판매표를 만들어 주세요.
                     </td>
                   </tr>
@@ -844,7 +938,7 @@ export function SalesPage() {
                 />
               </label>
               <label className="field">
-                <span>얼라이먼트 금액(천원)</span>
+                <span>얼라이먼트 금액(원)</span>
                 <input
                   inputMode="decimal"
                   onChange={(event) => setAlignmentAmount(sanitizeAmountInput(event.target.value))}
@@ -864,7 +958,7 @@ export function SalesPage() {
                 <small className="field-hint">타이어 없이 작업명 + 추가 작업비만으로도 저장할 수 있습니다.</small>
               </label>
               <label className={`field${serviceAmountError ? ' has-error' : ''}`}>
-                <span>추가 작업비(천원)</span>
+                <span>추가 작업비(원)</span>
                 <input
                   aria-invalid={Boolean(serviceAmountError)}
                   data-field-error-target="sales-service-amount"
@@ -884,7 +978,7 @@ export function SalesPage() {
               </label>
 
               <label className={`field${paymentError ? ' has-error' : ''}`}>
-                <span>카드(천원)</span>
+                <span>카드(원)</span>
                 <input
                   aria-invalid={Boolean(paymentError)}
                   data-field-error-target="sales-card-amount"
@@ -899,7 +993,7 @@ export function SalesPage() {
                 </small>
               </label>
               <label className={`field${paymentError ? ' has-error' : ''}`}>
-                <span>네이버(천원)</span>
+                <span>네이버(원)</span>
                 <input
                   aria-invalid={Boolean(paymentError)}
                   data-field-error-target="sales-naver-amount"
@@ -914,7 +1008,7 @@ export function SalesPage() {
                 </small>
               </label>
               <label className={`field${paymentError ? ' has-error' : ''}`}>
-                <span>현금(천원)</span>
+                <span>현금(원)</span>
                 <input
                   aria-invalid={Boolean(paymentError)}
                   data-field-error-target="sales-cash-amount"

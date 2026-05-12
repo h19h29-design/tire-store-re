@@ -544,7 +544,7 @@ export async function saveStockEntry(input: StockEntryInput) {
       [
         Math.max(0, input.unitCost),
         occurredAt,
-        signedQuantity === 0 ? '재고 날짜/원가 수정에서 원가 갱신' : '재고 입력에서 원가 갱신',
+        signedQuantity === 0 ? '재고 날짜/노출가격 수정에서 노출가격 갱신' : '재고 입력에서 노출가격 갱신',
         input.itemId,
       ],
     )

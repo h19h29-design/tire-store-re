@@ -448,7 +448,7 @@ export function InventoryPage() {
     }
 
     if (entryForm.unitCost.trim() !== '' && parseAmount(entryForm.unitCost) < 0) {
-      const message = '원가는 0 이상이어야 합니다.'
+      const message = '노출가격은 0 이상이어야 합니다.'
       issues.push(message)
       nextFieldErrors['inventory-unit-cost'] = message
       fieldOrder.push('inventory-unit-cost')
@@ -952,7 +952,7 @@ export function InventoryPage() {
                 </label>
 
                 <label className={`field${activeFieldErrors['inventory-unit-cost'] ? ' has-error' : ''}`}>
-                  <span>원가(원)</span>
+                  <span>노출가격(원)</span>
                   <input
                     aria-invalid={Boolean(activeFieldErrors['inventory-unit-cost'])}
                     data-field-error-target="inventory-unit-cost"
@@ -1149,7 +1149,7 @@ export function InventoryPage() {
             </label>
 
             <label className="field">
-              <span>원가(원)</span>
+              <span>노출가격(원)</span>
               <input
                 inputMode="numeric"
                 onChange={(event) =>
@@ -1160,20 +1160,6 @@ export function InventoryPage() {
                 }
                 type="text"
                 value={createForm.defaultCostPrice > 0 ? String(createForm.defaultCostPrice) : ''}
-              />
-            </label>
-
-            <label className="field">
-              <span>기준판매가(원)</span>
-              <input
-                onChange={(event) =>
-                  setCreateForm((current) => ({
-                    ...current,
-                    defaultSalePrice: parseAmount(event.target.value),
-                  }))
-                }
-                type="text"
-                value={createForm.defaultSalePrice > 0 ? String(createForm.defaultSalePrice) : ''}
               />
             </label>
 

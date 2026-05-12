@@ -593,7 +593,7 @@ export function SettingsPage() {
           <div className="panel-header-inline">
             <div>
               <h3>브랜드 할인 규칙</h3>
-              <p className="page-copy">브랜드명이 맞으면 기본 판매가에 할인율을 자동 반영합니다.</p>
+              <p className="page-copy">브랜드명이 맞으면 노출가격에 도매 할인율을 자동 반영합니다.</p>
             </div>
             <button className="secondary-button" onClick={addBrandRule} type="button">
               규칙 추가
