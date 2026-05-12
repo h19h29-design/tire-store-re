@@ -44,7 +44,7 @@ function parseAmount(value: string) {
   if (!Number.isFinite(numericValue)) {
     return 0
   }
-  return Math.max(0, Math.round(numericValue))
+  return Math.max(0, Math.round(numericValue * 1000))
 }
 
 function getAmountFieldPreview(value: string) {
@@ -56,7 +56,10 @@ function formatWonToInputAmount(value: number) {
     return ''
   }
 
-  return String(Math.round(value))
+  const thousandUnitValue = Math.round(value) / 1000
+  return Number.isInteger(thousandUnitValue)
+    ? String(thousandUnitValue)
+    : thousandUnitValue.toFixed(3).replace(/0+$/, '').replace(/\.$/, '')
 }
 
 function getCurrentSaleDateValue() {
@@ -852,7 +855,7 @@ export function SalesPage() {
                 />
               </label>
               <label className="field">
-                <span>얼라이먼트 금액(원)</span>
+                <span>얼라이먼트 금액(천원)</span>
                 <input
                   inputMode="decimal"
                   onChange={(event) => setAlignmentAmount(sanitizeAmountInput(event.target.value))}
@@ -872,7 +875,7 @@ export function SalesPage() {
                 <small className="field-hint">타이어 없이 작업명 + 추가 작업비만으로도 저장할 수 있습니다.</small>
               </label>
               <label className={`field${serviceAmountError ? ' has-error' : ''}`}>
-                <span>추가 작업비(원)</span>
+                <span>추가 작업비(천원)</span>
                 <input
                   aria-invalid={Boolean(serviceAmountError)}
                   data-field-error-target="sales-service-amount"
@@ -892,7 +895,7 @@ export function SalesPage() {
               </label>
 
               <label className={`field${paymentError ? ' has-error' : ''}`}>
-                <span>카드(원)</span>
+                <span>카드(천원)</span>
                 <input
                   aria-invalid={Boolean(paymentError)}
                   data-field-error-target="sales-card-amount"
@@ -907,7 +910,7 @@ export function SalesPage() {
                 </small>
               </label>
               <label className={`field${paymentError ? ' has-error' : ''}`}>
-                <span>네이버(원)</span>
+                <span>네이버(천원)</span>
                 <input
                   aria-invalid={Boolean(paymentError)}
                   data-field-error-target="sales-naver-amount"
@@ -922,7 +925,7 @@ export function SalesPage() {
                 </small>
               </label>
               <label className={`field${paymentError ? ' has-error' : ''}`}>
-                <span>현금(원)</span>
+                <span>현금(천원)</span>
                 <input
                   aria-invalid={Boolean(paymentError)}
                   data-field-error-target="sales-cash-amount"
