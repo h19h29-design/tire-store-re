@@ -1,6 +1,7 @@
 import { Navigate, createBrowserRouter, createHashRouter } from 'react-router-dom'
 import { HomePage } from '../features/home/HomePage'
 import { CustomersPage } from '../features/customers/CustomersPage'
+import { DataCenterPage } from '../features/dataCenter/DataCenterPage'
 import { DashboardPage } from '../features/dashboard/DashboardPage'
 import { ImportsPage } from '../features/imports/ImportsPage'
 import { InventoryPage } from '../features/inventory/InventoryPage'
@@ -26,6 +27,7 @@ const desktopRoutes = [
       { path: 'customers', element: <CustomersPage /> },
       { path: 'imports', element: <ImportsPage /> },
       { path: 'backups', element: <BackupRestorePage /> },
+      { path: 'data-center', element: <DataCenterPage /> },
       { path: 'updates', element: <UpdatePage /> },
       { path: 'settings', element: <SettingsPage /> },
     ],
@@ -51,6 +53,7 @@ const webRoutes = [
       { path: 'customers', element: <CustomersPage /> },
       { path: 'imports', element: <ImportsPage /> },
       { path: 'backups', element: <BackupRestorePage /> },
+      { path: 'data-center', element: <DataCenterPage /> },
       { path: 'updates', element: <UpdatePage /> },
       { path: 'settings', element: <SettingsPage /> },
     ],

@@ -121,12 +121,7 @@ function getEditableMaxQuantity(line: SaleDraftLine) {
   return Math.max(line.maxEditableQuantity ?? line.quantityAvailable, 1)
 }
 
-function resolveCartPricing(
-  cart: SaleDraftLine[],
-  _options: {
-    preserveExistingPricing?: boolean
-  } = {},
-) {
+function resolveCartPricing(cart: SaleDraftLine[]) {
   if (cart.length === 0) {
     return []
   }
@@ -500,9 +495,7 @@ export function SalesPage() {
   const hasSelectedItems = cart.length > 0
   const isPaymentOnlySale = !hasSelectedItems && explicitServiceTotal === 0 && rawPaymentTotal > 0
   const hasManualCashAmount = cashAmount.trim() !== ''
-  const resolvedCart = resolveCartPricing(cart, {
-    preserveExistingPricing: isEditMode,
-  })
+  const resolvedCart = resolveCartPricing(cart)
   const wholesaleTireTotal = resolvedCart.reduce(
     (sum, line) => sum + getWholesaleUnitPrice(line) * Math.max(0, line.quantity),
     0,

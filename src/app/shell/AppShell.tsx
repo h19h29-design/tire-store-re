@@ -17,6 +17,7 @@ const text = {
   customers: '\uACE0\uAC1D / \uCC28\uB7C9',
   imports: '\uCD08\uAE30 \uAC00\uC838\uC624\uAE30',
   backups: '\uBC31\uC5C5 / \uBCF5\uC6D0',
+  dataCenter: '\uB370\uC774\uD130 \uC13C\uD130',
   updates: '\uC5C5\uB370\uC774\uD2B8',
   settings: '\uC124\uC815',
   preparingRuntime: '\uB85C\uCEEC \uC2E4\uD589 \uD658\uACBD\uACFC \uB370\uC774\uD130\uBCA0\uC774\uC2A4\uB97C \uC900\uBE44\uD558\uACE0 \uC788\uC2B5\uB2C8\uB2E4.',
@@ -47,6 +48,7 @@ const navItems = [
   { to: '/app/customers', label: text.customers },
   { to: '/app/imports', label: text.imports },
   { to: '/app/backups', label: text.backups },
+  { to: '/app/data-center', label: text.dataCenter },
   { to: '/app/updates', label: text.updates },
   { to: '/app/settings', label: text.settings },
 ]
@@ -54,7 +56,7 @@ const navItems = [
 export function AppShell() {
   const desktopApp = isDesktopApp()
   const [runtimeState, setRuntimeState] = useState<'loading' | 'ready' | 'error'>(desktopApp ? 'loading' : 'error')
-  const [appVersion, setAppVersion] = useState('1.93.0')
+  const [appVersion, setAppVersion] = useState('1.97.0')
   const [runtimeMessage, setRuntimeMessage] = useState<string>(desktopApp ? text.preparingRuntime : text.desktopOnly)
 
   const handleQuotePublishTick = useEffectEvent(async () => {
@@ -73,7 +75,7 @@ export function AppShell() {
         if (active) setAppVersion(version)
       })
       .catch(() => {
-        if (active) setAppVersion('1.93.0')
+        if (active) setAppVersion('1.97.0')
       })
     return () => {
       active = false
