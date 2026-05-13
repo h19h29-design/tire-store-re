@@ -304,7 +304,7 @@ export function CustomersPage() {
   }
 
   return (
-    <section className="page">
+    <section className="page customers-page">
       <header className="page-header">
         <div>
           <p className="eyebrow">고객</p>
@@ -317,7 +317,7 @@ export function CustomersPage() {
         <div className="status-pill">{status}</div>
       </header>
 
-      <section className="panel">
+      <section className="panel customer-list-panel">
         <div className="filter-grid customer-filter-grid">
           <label className="field field-wide">
             <span>차량번호 / 연락처 / 고객명 검색</span>
@@ -425,9 +425,9 @@ export function CustomersPage() {
         </div>
       </section>
 
-      <section className="panel" ref={editPanelRef}>
+      {selectedRow ? (
+        <section className="panel customer-edit-panel" ref={editPanelRef}>
         <h3>고객 / 차량 수정</h3>
-        {selectedRow ? (
           <>
             <div className="selected-item-card">
               <strong>{selectedRow.plateNumber || '차량번호 미입력'}</strong>
@@ -612,13 +612,8 @@ export function CustomersPage() {
               </button>
             </div>
           </>
-        ) : (
-          <div className="empty-state-box">
-            <strong>목록에서 차량을 선택해 주세요.</strong>
-            <p>고객명, 연락처, 차량번호, 브랜드, 차종, 주행거리(키로수), 메모를 바로 수정할 수 있습니다.</p>
-          </div>
-        )}
-      </section>
+        </section>
+      ) : null}
     </section>
   )
 }

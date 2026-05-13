@@ -143,6 +143,18 @@
   gap: 1.25rem;
 }
 
+.customers-page .page-header {
+  order: 0;
+}
+
+.customer-edit-panel {
+  order: 1;
+}
+
+.customer-list-panel {
+  order: 2;
+}
+
 .page-header {
   display: flex;
   justify-content: space-between;

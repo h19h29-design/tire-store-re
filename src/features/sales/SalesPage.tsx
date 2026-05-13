@@ -16,7 +16,6 @@ import { loadSaleForEdit, lookupSaleCustomers, saveSale, type SaleDraftLine, upd
 
 type SalesFieldKey =
   | 'sales-search'
-  | 'sales-service-amount'
   | 'sales-card-amount'
   | 'sales-naver-amount'
   | 'sales-cash-amount'
@@ -530,8 +529,6 @@ export function SalesPage() {
     delete activeFieldErrors['sales-search']
   }
 
-  delete activeFieldErrors['sales-service-amount']
-
   if (!requiresPaymentCheck) {
     delete activeFieldErrors['sales-card-amount']
     delete activeFieldErrors['sales-naver-amount']
@@ -545,7 +542,6 @@ export function SalesPage() {
   }
 
   const searchError = activeFieldErrors['sales-search']
-  const serviceAmountError = activeFieldErrors['sales-service-amount']
   const paymentError =
     activeFieldErrors['sales-card-amount'] ??
     activeFieldErrors['sales-naver-amount'] ??
@@ -807,12 +803,12 @@ export function SalesPage() {
                 <input onChange={(event) => setPhone(event.target.value)} value={phone} />
               </label>
               <label className="field">
-                <span>차량번호</span>
-                <input onChange={(event) => setPlateNumber(event.target.value)} value={plateNumber} />
-              </label>
-              <label className="field">
                 <span>차종</span>
                 <input onChange={(event) => setVehicleModel(event.target.value)} value={vehicleModel} />
+              </label>
+              <label className="field">
+                <span>차량번호</span>
+                <input onChange={(event) => setPlateNumber(event.target.value)} value={plateNumber} />
               </label>
 
               {lookupMatches.length > 0 || lookupLoading ? (
@@ -872,26 +868,7 @@ export function SalesPage() {
                   placeholder="예: 위치교환, 엔진오일"
                   value={serviceDescription}
                 />
-                <small className="field-hint">타이어 없이 작업명 + 추가 작업비만으로도 저장할 수 있습니다.</small>
-              </label>
-              <label className={`field${serviceAmountError ? ' has-error' : ''}`}>
-                <span>추가 작업비(천원)</span>
-                <input
-                  aria-invalid={Boolean(serviceAmountError)}
-                  data-field-error-target="sales-service-amount"
-                  inputMode="decimal"
-                  onChange={(event) => setServiceAmount(sanitizeAmountInput(event.target.value))}
-                  placeholder="0"
-                  type="text"
-                  value={serviceAmount}
-                />
-                {serviceAmountError ? (
-                  <small className="field-error-text">{serviceAmountError}</small>
-                ) : (
-                  <small className="field-hint">
-                    {isPaymentOnlySale ? `${formatMoney(effectiveExtraServiceAmount)}원 자동 반영` : getAmountFieldPreview(serviceAmount)}
-                  </small>
-                )}
+                <small className="field-hint">작업명은 내역용입니다. 판매금액은 카드/네이버/현금 칸에 입력합니다.</small>
               </label>
 
               <label className={`field${paymentError ? ' has-error' : ''}`}>
@@ -950,10 +927,6 @@ export function SalesPage() {
                 <div>
                   <strong>얼라이먼트 입력</strong>
                   <span>{formatMoney(alignmentServiceAmount)}원</span>
-                </div>
-                <div>
-                  <strong>추가 작업비 입력</strong>
-                  <span>{formatMoney(effectiveExtraServiceAmount)}원</span>
                 </div>
                 <div>
                   <strong>판매금액</strong>
