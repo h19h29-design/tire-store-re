@@ -15,6 +15,7 @@ import type {
   DashboardAnalytics,
   DashboardExpenseHistoryRow,
   DashboardExpenseRecord,
+  DashboardHeadlineScope,
   DashboardPaymentFilters,
   DashboardRangeMode,
   DashboardSummary,
@@ -159,6 +160,18 @@ function getBucketColumnLabel(rangeMode: DashboardRangeMode) {
 
 function getHeadlineBaseDate(filters: DashboardAppliedFilters) {
   return filters.rangeMode === 'date' ? filters.dateValue : getTodayValue()
+}
+
+function getHeadlineScopeLabel(scope: DashboardHeadlineScope) {
+  switch (scope) {
+    case 'year':
+      return '연간'
+    case 'all':
+      return '전체'
+    case 'month':
+    default:
+      return '월간'
+  }
 }
 
 function buildMonthValue(year: string, month: string) {
@@ -609,6 +622,8 @@ export function DashboardPage() {
   const selectedMonthNumber = getMonthNumberPart(monthValue)
   const appliedRangeMode = appliedFilters.rangeMode
   const headlineBaseDate = getHeadlineBaseDate(appliedFilters)
+  const headlineScope = analytics?.headlineScope ?? 'month'
+  const headlineScopeLabel = getHeadlineScopeLabel(headlineScope)
   const focusExpenseRow = appliedRangeMode === 'date' ? expenseHistory[0] ?? null : null
   const focusExpenseNote = focusExpenseRow?.note.trim() ? focusExpenseRow.note.trim() : '등록된 지출 메모가 없습니다.'
   const focusExpenseUpdatedAt = focusExpenseRow?.updatedAt ? focusExpenseRow.updatedAt.replace('T', ' ').slice(0, 16) : '-'
@@ -647,7 +662,7 @@ export function DashboardPage() {
       <section className="panel dashboard-headline-panel">
         <div className="dashboard-headline-grid">
           <article className="dashboard-headline-card">
-            <p className="dashboard-headline-label">전일누계</p>
+            <p className="dashboard-headline-label">{headlineScopeLabel} 전일누계</p>
             <strong className="dashboard-headline-value">
               {(analytics?.headline.previousQuantity ?? 0).toLocaleString('ko-KR')}
             </strong>
@@ -659,13 +674,13 @@ export function DashboardPage() {
             </strong>
           </article>
           <article className="dashboard-headline-card">
-            <p className="dashboard-headline-label">누계</p>
+            <p className="dashboard-headline-label">{headlineScopeLabel} 누계</p>
             <strong className="dashboard-headline-value">
               {(analytics?.headline.cumulativeQuantity ?? 0).toLocaleString('ko-KR')}
             </strong>
           </article>
           <article className="dashboard-headline-card">
-            <p className="dashboard-headline-label">전일수익</p>
+            <p className="dashboard-headline-label">{headlineScopeLabel} 전일수익</p>
             <strong className="dashboard-headline-value dashboard-headline-value-profit">
               {formatMoney(analytics?.headline.previousProfit ?? 0)}원
             </strong>
@@ -677,7 +692,7 @@ export function DashboardPage() {
             </strong>
           </article>
           <article className="dashboard-headline-card">
-            <p className="dashboard-headline-label">누계</p>
+            <p className="dashboard-headline-label">{headlineScopeLabel} 누계수익</p>
             <strong className="dashboard-headline-value dashboard-headline-value-profit">
               {formatMoney(analytics?.headline.cumulativeProfit ?? 0)}원
             </strong>

@@ -1,6 +1,8 @@
 ﻿import { execute, selectFirst, selectRows } from '../../lib/db'
 import {
   DEFAULT_LOW_STOCK_THRESHOLD,
+  DEFAULT_DASHBOARD_DISPLAY_PREFERENCES,
+  loadDashboardDisplayPreferences,
   loadLowStockThresholdSetting,
   saveLowStockThresholdSetting,
 } from '../../lib/appSettings'
@@ -12,6 +14,7 @@ import type {
   DashboardExpenseHistoryRow,
   DashboardExpenseInput,
   DashboardExpenseRecord,
+  DashboardHeadlineScope,
   DashboardHeadlineMetrics,
   DashboardInventoryMetrics,
   DashboardLowStockRow,
@@ -397,23 +400,61 @@ async function loadSummaryByQuery(
   return buildSummary(salesRow, linesRow, expenseRow)
 }
 
-async function loadHeadlineMetrics(todayValue: string, todaySummary: DashboardSummary): Promise<DashboardHeadlineMetrics> {
+function getHeadlineScopeStartDate(scope: DashboardHeadlineScope, baseDateValue: string) {
+  switch (scope) {
+    case 'month':
+      return `${baseDateValue.slice(0, 7)}-01`
+    case 'year':
+      return `${baseDateValue.slice(0, 4)}-01-01`
+    case 'all':
+    default:
+      return null
+  }
+}
+
+async function loadHeadlineMetrics(
+  todayValue: string,
+  todaySummary: DashboardSummary,
+  headlineScope: DashboardHeadlineScope,
+): Promise<DashboardHeadlineMetrics> {
+  const startDate = getHeadlineScopeStartDate(headlineScope, todayValue)
+  const previousSalesWhereClause = startDate
+    ? 'SUBSTR(sold_at, 1, 10) >= ? AND SUBSTR(sold_at, 1, 10) < ?'
+    : 'SUBSTR(sold_at, 1, 10) < ?'
+  const previousLineWhereClause = startDate
+    ? 'SUBSTR(sales.sold_at, 1, 10) >= ? AND SUBSTR(sales.sold_at, 1, 10) < ?'
+    : 'SUBSTR(sales.sold_at, 1, 10) < ?'
+  const previousExpenseWhereClause = startDate
+    ? 'expense_date >= ? AND expense_date < ?'
+    : 'expense_date < ?'
+  const cumulativeSalesWhereClause = startDate
+    ? 'SUBSTR(sold_at, 1, 10) >= ? AND SUBSTR(sold_at, 1, 10) <= ?'
+    : 'SUBSTR(sold_at, 1, 10) <= ?'
+  const cumulativeLineWhereClause = startDate
+    ? 'SUBSTR(sales.sold_at, 1, 10) >= ? AND SUBSTR(sales.sold_at, 1, 10) <= ?'
+    : 'SUBSTR(sales.sold_at, 1, 10) <= ?'
+  const cumulativeExpenseWhereClause = startDate
+    ? 'expense_date >= ? AND expense_date <= ?'
+    : 'expense_date <= ?'
+  const previousBindValues = startDate ? [startDate, todayValue] : [todayValue]
+  const cumulativeBindValues = startDate ? [startDate, todayValue] : [todayValue]
+
   const [previousSummary, cumulativeSummary] = await Promise.all([
     loadSummaryByQuery(
-      'SUBSTR(sold_at, 1, 10) < ?',
-      [todayValue],
-      'SUBSTR(sales.sold_at, 1, 10) < ?',
-      [todayValue],
-      'expense_date < ?',
-      [todayValue],
+      previousSalesWhereClause,
+      previousBindValues,
+      previousLineWhereClause,
+      previousBindValues,
+      previousExpenseWhereClause,
+      previousBindValues,
     ),
     loadSummaryByQuery(
-      'SUBSTR(sold_at, 1, 10) <= ?',
-      [todayValue],
-      'SUBSTR(sales.sold_at, 1, 10) <= ?',
-      [todayValue],
-      'expense_date <= ?',
-      [todayValue],
+      cumulativeSalesWhereClause,
+      cumulativeBindValues,
+      cumulativeLineWhereClause,
+      cumulativeBindValues,
+      cumulativeExpenseWhereClause,
+      cumulativeBindValues,
     ),
   ])
 
@@ -843,7 +884,13 @@ export async function loadDashboardAnalytics(rangeMode: DashboardRangeMode, valu
     () => loadLowStockThresholdSetting(),
     () => DEFAULT_LOW_STOCK_THRESHOLD,
   )
+  const displayPreferencesResult = await loadDashboardPart(
+    '대시보드 표시 설정',
+    () => loadDashboardDisplayPreferences(),
+    () => DEFAULT_DASHBOARD_DISPLAY_PREFERENCES,
+  )
   const lowStockThreshold = lowStockThresholdResult.value
+  const headlineScope = displayPreferencesResult.value.headlineScope
 
   const [todayResult, periodResult, inventoryResult, brandRowsResult, sizeRowsResult, lowStockItemsResult, periodBucketsResult, recentSalesResult] =
     await Promise.all([
@@ -862,12 +909,13 @@ export async function loadDashboardAnalytics(rangeMode: DashboardRangeMode, valu
     ])
   const headlineResult = await loadDashboardPart(
     '상단 누계',
-    () => loadHeadlineMetrics(focusDateValue, todayResult.value),
+    () => loadHeadlineMetrics(focusDateValue, todayResult.value, headlineScope),
     createEmptyHeadlineMetrics,
   )
 
   const warnings = [
     lowStockThresholdResult.warning,
+    displayPreferencesResult.warning,
     todayResult.warning,
     headlineResult.warning,
     periodResult.warning,
@@ -886,6 +934,7 @@ export async function loadDashboardAnalytics(rangeMode: DashboardRangeMode, valu
 
   return {
     headline: headlineResult.value,
+    headlineScope,
     today: todayResult.value,
     period,
     inventory: inventoryResult.value,

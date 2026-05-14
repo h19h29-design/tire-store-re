@@ -5,10 +5,17 @@ import { createBackupAt, getRuntimeInfo, refreshRuntimeReady } from '../../lib/d
 import { showErrorDialog, showValidationDialog } from '../../lib/dialogs'
 import { ensureReferenceData, getReferenceDataSummary } from '../../lib/referenceData'
 import { APP_THEME_OPTIONS, getStoredAppTheme, setStoredAppTheme, type AppTheme } from '../../lib/theme'
+import {
+  DEFAULT_DASHBOARD_DISPLAY_PREFERENCES,
+  loadDashboardDisplayPreferences,
+  saveDashboardDisplayPreferences,
+} from '../../lib/appSettings'
 import type {
   BackupLogRow,
   BackupPreferences,
   BrandDiscountRule,
+  DashboardDisplayPreferences,
+  DashboardHeadlineScope,
   ProductDiscountRule,
   PublicQuotePreferences,
   ReferenceDataSummary,
@@ -39,6 +46,28 @@ const defaultBackupPreferences: BackupPreferences = {
   autoBackupMemo: '',
   lowStockThreshold: 4,
 }
+
+const dashboardHeadlineScopeOptions: Array<{
+  value: DashboardHeadlineScope
+  label: string
+  description: string
+}> = [
+  {
+    value: 'month',
+    label: '월간',
+    description: '선택일 또는 오늘이 속한 달 기준으로 전일누계와 누계를 계산합니다.',
+  },
+  {
+    value: 'year',
+    label: '연간',
+    description: '선택일 또는 오늘이 속한 해 기준으로 전일누계와 누계를 계산합니다.',
+  },
+  {
+    value: 'all',
+    label: '전체 누적',
+    description: '처음 입력된 판매부터 기준일까지 전체 누계를 계산합니다.',
+  },
+]
 
 const defaultReferenceSummary: ReferenceDataSummary = {
   tireBrandCount: 0,
@@ -142,6 +171,8 @@ export function SettingsPage() {
   const [runtimeInfo, setRuntimeInfo] = useState<RuntimeInfo | null>(null)
   const [referenceSummary, setReferenceSummary] = useState<ReferenceDataSummary>(defaultReferenceSummary)
   const [backupPreferences, setBackupPreferences] = useState<BackupPreferences>(defaultBackupPreferences)
+  const [dashboardDisplayPreferences, setDashboardDisplayPreferences] =
+    useState<DashboardDisplayPreferences>(DEFAULT_DASHBOARD_DISPLAY_PREFERENCES)
   const [brandRules, setBrandRules] = useState<BrandDiscountRule[]>([])
   const [productRules, setProductRules] = useState<ProductDiscountRule[]>([])
   const [publicQuotePreferences, setPublicQuotePreferences] =
@@ -161,6 +192,7 @@ export function SettingsPage() {
           nextRuntimeInfo,
           nextReferenceSummary,
           nextRecentBackups,
+          nextDashboardDisplayPreferences,
         ] = await Promise.all([
           loadBackupPreferences(),
           loadBrandDiscountRules(),
@@ -169,6 +201,7 @@ export function SettingsPage() {
           getRuntimeInfo(),
           getReferenceDataSummary(),
           loadRecentBackups(),
+          loadDashboardDisplayPreferences(),
         ])
 
         if (!active) {
@@ -182,6 +215,7 @@ export function SettingsPage() {
         setRuntimeInfo(nextRuntimeInfo)
         setReferenceSummary(nextReferenceSummary)
         setRecentBackups(nextRecentBackups)
+        setDashboardDisplayPreferences(nextDashboardDisplayPreferences)
         setStatus('설정 화면이 준비되었습니다.')
       } catch (error) {
         console.error(error)
@@ -226,6 +260,16 @@ export function SettingsPage() {
 
   function updateBackupPreferences<Key extends keyof BackupPreferences>(key: Key, value: BackupPreferences[Key]) {
     setBackupPreferences((current) => ({
+      ...current,
+      [key]: value,
+    }))
+  }
+
+  function updateDashboardDisplayPreferences<Key extends keyof DashboardDisplayPreferences>(
+    key: Key,
+    value: DashboardDisplayPreferences[Key],
+  ) {
+    setDashboardDisplayPreferences((current) => ({
       ...current,
       [key]: value,
     }))
@@ -373,16 +417,18 @@ export function SettingsPage() {
   async function handleSaveAllSettings() {
     try {
       setSaving(true)
-      const [savedBrandRules, savedProductRules, savedPublicQuotePreferences] = await Promise.all([
+      const [savedBrandRules, savedProductRules, savedPublicQuotePreferences, savedDashboardDisplayPreferences] = await Promise.all([
         saveBrandDiscountRules(brandRules),
         saveProductDiscountRules(productRules),
         savePublicQuotePreferences(publicQuotePreferences),
+        saveDashboardDisplayPreferences(dashboardDisplayPreferences),
       ])
 
       await saveBackupPreferences(backupPreferences)
       setBrandRules(savedBrandRules)
       setProductRules(savedProductRules)
       setPublicQuotePreferences(savedPublicQuotePreferences)
+      setDashboardDisplayPreferences(savedDashboardDisplayPreferences)
       await refreshRuntimeSummary()
       setStatus('설정을 저장했습니다.')
     } catch (error) {
@@ -514,6 +560,29 @@ export function SettingsPage() {
                 type="number"
                 value={backupPreferences.lowStockThreshold}
               />
+            </label>
+
+            <label className="field">
+              <span>대시보드 상단 기준</span>
+              <select
+                className="field-select"
+                onChange={(event) =>
+                  updateDashboardDisplayPreferences('headlineScope', event.target.value as DashboardHeadlineScope)
+                }
+                value={dashboardDisplayPreferences.headlineScope}
+              >
+                {dashboardHeadlineScopeOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <span className="field-hint">
+                {
+                  dashboardHeadlineScopeOptions.find((option) => option.value === dashboardDisplayPreferences.headlineScope)
+                    ?.description
+                }
+              </span>
             </label>
 
             <label className="field checkbox-field">

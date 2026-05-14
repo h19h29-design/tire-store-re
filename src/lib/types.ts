@@ -272,6 +272,12 @@ export type CustomerFilterOptions = {
 
 export type DashboardRangeMode = 'date' | 'month' | 'year'
 
+export type DashboardHeadlineScope = 'month' | 'year' | 'all'
+
+export type DashboardDisplayPreferences = {
+  headlineScope: DashboardHeadlineScope
+}
+
 export type DashboardSummary = {
   salesCount: number
   totalAmount: number
@@ -375,6 +381,7 @@ export type DashboardHeadlineMetrics = {
 
 export type DashboardAnalytics = {
   headline: DashboardHeadlineMetrics
+  headlineScope: DashboardHeadlineScope
   today: DashboardSummary
   period: DashboardSummary
   inventory: DashboardInventoryMetrics
