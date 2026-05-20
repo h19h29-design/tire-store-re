@@ -11,7 +11,6 @@ import {
   type FieldValidationMap,
 } from '../../lib/dialogs'
 import { formatMoney } from '../../lib/normalize'
-import { isCodexBrowserPreview } from '../../lib/platform'
 import type {
   DashboardAnalytics,
   DashboardExpenseHistoryRow,
@@ -237,7 +236,6 @@ function isEditableElement(target: EventTarget | null) {
 
 export function DashboardPage() {
   const navigate = useNavigate()
-  const browserPreview = isCodexBrowserPreview()
   const [appliedFilters, setAppliedFilters] = useState<DashboardAppliedFilters>({
     rangeMode: 'date',
     dateValue: getTodayValue(),
@@ -281,14 +279,6 @@ export function DashboardPage() {
     )
 
     async function loadDashboard() {
-      if (browserPreview) {
-        setCards(defaultCards)
-        setAnalytics(null)
-        setExpenseHistory([])
-        setStatus('Codex 브라우저 미리보기입니다. 실제 데이터 조회와 저장은 데스크톱 앱에서 진행됩니다.')
-        return
-      }
-
       try {
         const [itemsResult, customersResult, salesResult, analyticsResult, expenseHistoryResult] =
           await Promise.allSettled([
@@ -365,7 +355,7 @@ export function DashboardPage() {
     return () => {
       active = false
     }
-  }, [appliedFilters, refreshKey, browserPreview])
+  }, [appliedFilters, refreshKey])
 
   useEffect(() => {
     let active = true

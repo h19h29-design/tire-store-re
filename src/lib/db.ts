@@ -1,5 +1,4 @@
 import Database from '@tauri-apps/plugin-sql'
-import { isCodexBrowserPreview } from './platform'
 
 export const DB_PATH = 'sqlite:tire-store.db'
 
@@ -70,12 +69,6 @@ type CountRow = {
 }
 
 export async function selectCount(query: string, bindValues: unknown[] = []) {
-  if (isCodexBrowserPreview()) {
-    void query
-    void bindValues
-    return 0
-  }
-
   const rows = await queueDatabaseOperation(async () => {
     const db = await getDatabase()
     return db.select<CountRow[]>(query, bindValues)
@@ -89,12 +82,6 @@ type ExecuteResult = {
 }
 
 export async function execute(query: string, bindValues: unknown[] = []) {
-  if (isCodexBrowserPreview()) {
-    void query
-    void bindValues
-    return { rowsAffected: 0, lastInsertId: 0 }
-  }
-
   return queueDatabaseOperation(async () => {
     const db = await getDatabase()
     return db.execute(query, bindValues) as Promise<ExecuteResult>
@@ -102,12 +89,6 @@ export async function execute(query: string, bindValues: unknown[] = []) {
 }
 
 export async function selectRows<T>(query: string, bindValues: unknown[] = []) {
-  if (isCodexBrowserPreview()) {
-    void query
-    void bindValues
-    return [] as T[]
-  }
-
   return queueDatabaseOperation(async () => {
     const db = await getDatabase()
     return db.select<T[]>(query, bindValues)
