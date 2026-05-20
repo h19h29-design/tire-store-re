@@ -112,6 +112,27 @@ function effectiveSaleTotalSql(tablePrefix = '') {
   return `CASE WHEN (${paymentAmount}) > 0 THEN (${paymentAmount}) ELSE COALESCE(${prefix}total_amount, 0) END`
 }
 
+function actualTireSaleAmountSql(salePrefix = 'sales', lineTotalsPrefix = 'line_totals') {
+  const effectiveSaleTotal = effectiveSaleTotalSql(salePrefix)
+  const serviceAmount = `COALESCE(${lineTotalsPrefix}.serviceAmount, 0)`
+  const tireSaleAmount = `(${effectiveSaleTotal}) - ${serviceAmount}`
+  return `CASE WHEN ${tireSaleAmount} > 0 THEN ${tireSaleAmount} ELSE 0 END`
+}
+
+function allocatedTireLineSaleAmountSql(
+  lineTotalExpression = 'sale_lines.line_total',
+  salePrefix = 'sales',
+  lineTotalsPrefix = 'line_totals',
+) {
+  return `CASE
+    WHEN COALESCE(${lineTotalsPrefix}.tireWholesaleAmount, 0) > 0
+    THEN 1.0 * COALESCE(${lineTotalExpression}, 0)
+      * (${actualTireSaleAmountSql(salePrefix, lineTotalsPrefix)})
+      / COALESCE(${lineTotalsPrefix}.tireWholesaleAmount, 0)
+    ELSE 0
+  END`
+}
+
 function normalizeDiscountRate(value: unknown) {
   const numeric = Number(value ?? 0)
   if (!Number.isFinite(numeric)) {
@@ -474,10 +495,19 @@ async function loadBrandBreakdown(rangeMode: DashboardRangeMode, value: string) 
     `SELECT
       COALESCE(items.brand_name, '기타') AS label,
       COALESCE(SUM(sale_lines.quantity), 0) AS quantity,
-      COALESCE(SUM(sale_lines.line_total), 0) AS amount
+      COALESCE(ROUND(SUM(${allocatedTireLineSaleAmountSql()})), 0) AS amount
     FROM sale_lines
     INNER JOIN sales
       ON sales.id = sale_lines.sale_id
+    INNER JOIN (
+      SELECT
+        sale_id,
+        COALESCE(SUM(CASE WHEN line_type = 'tire' THEN line_total ELSE 0 END), 0) AS tireWholesaleAmount,
+        COALESCE(SUM(CASE WHEN line_type <> 'tire' THEN line_total ELSE 0 END), 0) AS serviceAmount
+      FROM sale_lines
+      GROUP BY sale_id
+    ) line_totals
+      ON line_totals.sale_id = sales.id
     LEFT JOIN items
       ON items.id = sale_lines.item_id
     WHERE sale_lines.line_type = 'tire'
@@ -502,10 +532,19 @@ async function loadSizeBreakdown(rangeMode: DashboardRangeMode, value: string) {
       COALESCE(NULLIF(items.size_label, ''), NULLIF(sale_lines.size_snapshot, ''), '미입력') AS sizeLabel,
       COALESCE(NULLIF(items.pattern_name, ''), NULLIF(sale_lines.item_snapshot_name, ''), '미입력') AS patternName,
       sale_lines.quantity AS quantity,
-      sale_lines.line_total AS amount
+      ROUND(${allocatedTireLineSaleAmountSql()}) AS amount
     FROM sale_lines
     INNER JOIN sales
       ON sales.id = sale_lines.sale_id
+    INNER JOIN (
+      SELECT
+        sale_id,
+        COALESCE(SUM(CASE WHEN line_type = 'tire' THEN line_total ELSE 0 END), 0) AS tireWholesaleAmount,
+        COALESCE(SUM(CASE WHEN line_type <> 'tire' THEN line_total ELSE 0 END), 0) AS serviceAmount
+      FROM sale_lines
+      GROUP BY sale_id
+    ) line_totals
+      ON line_totals.sale_id = sales.id
     LEFT JOIN items
       ON items.id = sale_lines.item_id
     WHERE sale_lines.line_type = 'tire'
@@ -655,7 +694,8 @@ async function loadPeriodBuckets(rangeMode: DashboardRangeMode, value: string) {
       SELECT
         sale_id,
         COALESCE(SUM(CASE WHEN line_type = 'tire' THEN quantity ELSE 0 END), 0) AS quantity,
-        COALESCE(SUM(CASE WHEN line_type = 'tire' THEN line_total ELSE 0 END), 0) AS amount
+        COALESCE(SUM(CASE WHEN line_type = 'tire' THEN line_total ELSE 0 END), 0) AS tireWholesaleAmount,
+        COALESCE(SUM(CASE WHEN line_type <> 'tire' THEN line_total ELSE 0 END), 0) AS serviceAmount
       FROM sale_lines
       WHERE sale_id IN (SELECT id FROM filtered_sales)
       GROUP BY sale_id
@@ -664,7 +704,17 @@ async function loadPeriodBuckets(rangeMode: DashboardRangeMode, value: string) {
       SUBSTR(filtered_sales.sold_at, 1, ?) AS label,
       COUNT(*) AS salesCount,
       COALESCE(SUM(COALESCE(tire_totals.quantity, 0)), 0) AS quantity,
-      COALESCE(SUM(COALESCE(tire_totals.amount, 0)), 0) AS amount,
+      COALESCE(ROUND(SUM(
+        CASE
+          WHEN COALESCE(tire_totals.tireWholesaleAmount, 0) > 0 THEN
+            CASE
+              WHEN filtered_sales.total_amount - COALESCE(tire_totals.serviceAmount, 0) > 0
+              THEN filtered_sales.total_amount - COALESCE(tire_totals.serviceAmount, 0)
+              ELSE 0
+            END
+          ELSE 0
+        END
+      )), 0) AS amount,
       COALESCE(SUM(filtered_sales.total_amount), 0) AS totalAmount,
       COALESCE(SUM(filtered_sales.card_amount), 0) AS cardAmount,
       COALESCE(SUM(filtered_sales.naverAmount), 0) AS naverAmount,

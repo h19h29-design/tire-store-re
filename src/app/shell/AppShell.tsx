@@ -3,7 +3,7 @@ import { NavLink, Outlet } from 'react-router-dom'
 import { getVersion } from '@tauri-apps/api/app'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { ensureRuntimeReady } from '../../lib/desktop'
-import { isDesktopApp } from '../../lib/platform'
+import { isCodexBrowserPreview, isDesktopApp } from '../../lib/platform'
 import { ensureReferenceData } from '../../lib/referenceData'
 import { syncPublicQuoteFeedSilently } from '../../features/publicQuote/publicQuotePublishingService'
 import { DEFAULT_PUBLIC_QUOTE_PUBLISH_INTERVAL_MINUTES } from '../../features/publicQuote/quoteUtils'
@@ -55,9 +55,14 @@ const navItems = [
 
 export function AppShell() {
   const desktopApp = isDesktopApp()
-  const [runtimeState, setRuntimeState] = useState<'loading' | 'ready' | 'error'>(desktopApp ? 'loading' : 'error')
-  const [appVersion, setAppVersion] = useState('1.98.0')
-  const [runtimeMessage, setRuntimeMessage] = useState<string>(desktopApp ? text.preparingRuntime : text.desktopOnly)
+  const browserPreview = isCodexBrowserPreview()
+  const [runtimeState, setRuntimeState] = useState<'loading' | 'ready' | 'error'>(
+    desktopApp ? 'loading' : browserPreview ? 'ready' : 'error',
+  )
+  const [appVersion, setAppVersion] = useState('2.0.0')
+  const [runtimeMessage, setRuntimeMessage] = useState<string>(
+    desktopApp || browserPreview ? text.preparingRuntime : text.desktopOnly,
+  )
 
   const handleQuotePublishTick = useEffectEvent(async () => {
     try {
@@ -75,7 +80,7 @@ export function AppShell() {
         if (active) setAppVersion(version)
       })
       .catch(() => {
-        if (active) setAppVersion('1.98.0')
+        if (active) setAppVersion('2.0.0')
       })
     return () => {
       active = false
@@ -196,7 +201,12 @@ export function AppShell() {
 
         <nav aria-label={text.desktopMenu} className="nav-list">
           {navItems.map((item) => (
-            <NavLink className={({ isActive }) => `nav-item${isActive ? ' is-active' : ''}`} end={item.end} key={item.to} to={item.to}>
+            <NavLink
+              className={({ isActive }) => `nav-item${isActive ? ' is-active' : ''}`}
+              end={item.end}
+              key={item.to}
+              to={browserPreview ? `${item.to}?codexPreview=1` : item.to}
+            >
               {item.label}
             </NavLink>
           ))}
