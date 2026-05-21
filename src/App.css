@@ -229,6 +229,12 @@
   padding: 0.92rem 0.98rem;
 }
 
+.sales-search-panel {
+  min-height: calc(100vh - 7.5rem);
+  align-content: stretch;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
 .sales-workbench-top {
   display: flex;
   align-items: end;
@@ -728,7 +734,10 @@
 }
 
 .compact-result-list {
-  max-height: clamp(18rem, 56vh, 28rem);
+  gap: 0.55rem;
+  min-height: 0;
+  max-height: none;
+  padding-right: 0.15rem;
 }
 
 .result-card {
@@ -743,6 +752,21 @@
   background: rgba(255, 255, 255, 0.78);
   text-align: left;
   cursor: pointer;
+}
+
+.compact-result-list .result-card {
+  gap: 0.7rem;
+  border-radius: 0.82rem;
+  padding: 0.66rem 0.78rem;
+}
+
+.compact-result-list .result-card p {
+  margin-top: 0.12rem;
+  line-height: 1.22;
+}
+
+.compact-result-list .result-meta {
+  gap: 0.2rem;
 }
 
 .result-card:disabled {
@@ -1003,6 +1027,129 @@
 .compact-stat-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   margin-bottom: 1rem;
+}
+
+.inventory-page {
+  gap: 0.7rem;
+}
+
+.inventory-page .page-header {
+  align-items: center;
+}
+
+.inventory-page .status-pill {
+  padding: 0.42rem 0.68rem;
+  font-size: 0.84rem;
+}
+
+.inventory-summary-panel {
+  padding: 0.58rem 0.78rem;
+}
+
+.inventory-summary-panel .compact-stat-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.28rem 0.75rem;
+  margin-bottom: 0;
+}
+
+.inventory-summary-panel .stat-card {
+  gap: 0.08rem;
+}
+
+.inventory-summary-panel .stat-label {
+  font-size: 0.76rem;
+  line-height: 1.08;
+}
+
+.inventory-summary-panel .stat-value {
+  font-size: 1.32rem;
+  line-height: 1;
+}
+
+.inventory-layout {
+  gap: 0.72rem;
+}
+
+.inventory-layout > .panel {
+  padding: 0.86rem 0.95rem;
+}
+
+.inventory-layout .filter-grid {
+  gap: 0.42rem 0.55rem;
+}
+
+.inventory-layout .field {
+  gap: 0.22rem;
+}
+
+.inventory-layout .field span {
+  font-size: 0.8rem;
+  line-height: 1.08;
+}
+
+.inventory-layout .field input,
+.inventory-layout .field-select {
+  padding: 0.58rem 0.7rem;
+  border-radius: 0.72rem;
+}
+
+.inventory-filter-action {
+  align-self: end;
+}
+
+.inventory-filter-action .secondary-button {
+  width: 100%;
+  min-height: 2.36rem;
+  padding: 0.52rem 0.68rem;
+}
+
+.inventory-layout .table-wrap {
+  max-height: clamp(30rem, 72vh, 48rem);
+  overflow: auto;
+}
+
+.inventory-layout .data-table th,
+.inventory-layout .data-table td {
+  padding: 0.3rem 0.45rem;
+}
+
+.inventory-side-panel {
+  gap: 0.48rem;
+}
+
+.inventory-side-panel h3 {
+  margin-bottom: 0.2rem;
+}
+
+.inventory-side-panel .empty-state-box,
+.inventory-side-panel .note-box {
+  padding: 0.72rem 0.86rem;
+}
+
+.inventory-side-panel .empty-state-box p,
+.inventory-side-panel .note-box p {
+  margin-top: 0.2rem;
+  line-height: 1.25;
+}
+
+.inventory-side-panel .form-grid {
+  gap: 0.5rem;
+  margin-top: 0.45rem;
+}
+
+.inventory-side-panel .field input {
+  padding: 0.56rem 0.68rem;
+}
+
+.inventory-side-panel .field-hint,
+.inventory-side-panel .field-error-text,
+.inventory-side-panel .checkbox-inline {
+  font-size: 0.74rem;
+  line-height: 1.2;
+}
+
+.inventory-create-form-grid {
+  gap: 0.46rem;
 }
 
 .sales-form-section {

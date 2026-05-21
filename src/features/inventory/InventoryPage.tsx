@@ -673,20 +673,16 @@ export function InventoryPage() {
   }
 
   return (
-    <section className="page">
+    <section className="page inventory-page">
       <header className="page-header">
         <div>
           <p className="eyebrow">재고</p>
           <h2>재고 조회 / 입력</h2>
-          <p className="page-copy">
-            브랜드, 패턴, 규격으로 빠르게 필터링하고, 기존 품목 재고조정과 신규 품목 등록을 한 화면에서 처리할 수
-            있게 구성했습니다.
-          </p>
         </div>
         <div className="status-pill">{loading ? '재고를 갱신하는 중입니다.' : status}</div>
       </header>
 
-      <section className="panel">
+      <section className="panel inventory-summary-panel">
         <div className="stat-grid compact-stat-grid">
           <article className="stat-card">
             <p className="stat-label">총 재고 수량</p>
@@ -795,16 +791,13 @@ export function InventoryPage() {
                 <option value="out-of-stock">품절만</option>
               </select>
             </label>
-          </div>
 
-          <div className="button-row">
-            <button className="secondary-button" onClick={resetFilters} type="button">
-              필터 초기화
-            </button>
-          </div>
-
-          <div className="note-box compact-note">
-            규격 검색은 `145`, `145 13`, `145 r 13`, `2554519`처럼 띄어쓰기 없이 적어도 인식합니다.
+            <div className="field inventory-filter-action">
+              <span aria-hidden="true">&nbsp;</span>
+              <button className="secondary-button" onClick={resetFilters} type="button">
+                필터 초기화
+              </button>
+            </div>
           </div>
 
           <div className="table-wrap">
@@ -1087,12 +1080,12 @@ export function InventoryPage() {
             </div>
           )}
 
-          <div className="note-box" style={{ marginTop: '1rem' }}>
+          <div className="note-box">
             <strong>신규 품목 등록</strong>
             <p>새 브랜드, 새 패턴, 새 규격이 들어왔을 때 여기서 바로 등록할 수 있습니다.</p>
           </div>
 
-          <div className="form-grid">
+          <div className="form-grid inventory-create-form-grid">
             <label className={`field${activeFieldErrors['inventory-create-brand'] ? ' has-error' : ''}`}>
               <span>브랜드</span>
               <input
