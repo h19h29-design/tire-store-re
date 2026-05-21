@@ -30,6 +30,7 @@ pub fn run() {
             commands::get_runtime_info,
             commands::has_platform_secret,
             commands::import_initial_data,
+            commands::import_sales_inventory_update,
             commands::parse_inventory_workbook,
             commands::parse_sales_workbook,
             commands::parse_vendor_price_workbook,

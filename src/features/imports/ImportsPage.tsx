@@ -12,6 +12,7 @@ import {
   detectImportFiles,
   getRuntimeInfo,
   importInitialData,
+  importSalesInventoryUpdate,
   parseVendorPriceWorkbook,
 } from '../../lib/desktop'
 import { ensureReferenceData } from '../../lib/referenceData'
@@ -19,6 +20,8 @@ import type {
   InitialImportResult,
   ParsedVendorPriceWorkbook,
   RuntimeInfo,
+  SalesInventoryImportMode,
+  SalesInventoryImportResult,
   VendorPriceImportResult,
 } from '../../lib/types'
 
@@ -45,6 +48,9 @@ export function ImportsPage() {
   const [running, setRunning] = useState(false)
   const [message, setMessage] = useState('다운로드 폴더에서 기본 엑셀 파일을 자동 감지합니다.')
   const [result, setResult] = useState<InitialImportResult | null>(null)
+  const [salesInventoryMode, setSalesInventoryMode] = useState<SalesInventoryImportMode>('append')
+  const [salesInventoryResult, setSalesInventoryResult] = useState<SalesInventoryImportResult | null>(null)
+  const [runningSalesInventoryUpdate, setRunningSalesInventoryUpdate] = useState(false)
   const [vendorPricePath, setVendorPricePath] = useState('')
   const [vendorPreview, setVendorPreview] = useState<ParsedVendorPriceWorkbook | null>(null)
   const [vendorImportResult, setVendorImportResult] = useState<VendorPriceImportResult | null>(null)
@@ -126,7 +132,7 @@ export function ImportsPage() {
     }
   }
 
-  async function handleRunImport() {
+  async function validateImportPaths() {
     if (!inventoryPath || !salesPath) {
       const issues: string[] = []
       const nextFieldErrors: FieldValidationMap<ImportFieldKey> = {}
@@ -153,11 +159,20 @@ export function ImportsPage() {
       if (firstField) {
         focusFieldErrorTarget(firstField)
       }
+      return false
+    }
+
+    return true
+  }
+
+  async function handleRunImport() {
+    if (!(await validateImportPaths())) {
       return
     }
 
     setRunning(true)
     setResult(null)
+    setSalesInventoryResult(null)
     setMessage('엑셀 파일을 읽고 DB를 초기화하는 중입니다. 잠시만 기다려 주세요.')
 
     try {
@@ -172,6 +187,37 @@ export function ImportsPage() {
       await showErrorDialog(error, '초기 데이터 가져오기 실패')
     } finally {
       setRunning(false)
+    }
+  }
+
+  async function handleRunSalesInventoryUpdate() {
+    if (!(await validateImportPaths())) {
+      return
+    }
+
+    try {
+      setRunningSalesInventoryUpdate(true)
+      setSalesInventoryResult(null)
+      setMessage(
+        salesInventoryMode === 'append'
+          ? '판매일보와 재고관리 파일에서 현재 DB에 없는 내용만 추가하는 중입니다.'
+          : '판매일보와 재고관리 파일 기준으로 기존 가져오기 데이터를 덮어쓰는 중입니다.',
+      )
+      const importResult = await importSalesInventoryUpdate(inventoryPath, salesPath, salesInventoryMode)
+      await ensureReferenceData()
+      setFieldErrors({})
+      setSalesInventoryResult(importResult)
+      setMessage(
+        salesInventoryMode === 'append'
+          ? '판매일보/재고 추가가 완료되었습니다. 같은 내용은 건드리지 않았습니다.'
+          : '판매일보/재고 덮어쓰기가 완료되었습니다.',
+      )
+    } catch (error) {
+      console.error(error)
+      setMessage(getErrorMessage(error))
+      await showErrorDialog(error, '판매일보/재고 반영 실패')
+    } finally {
+      setRunningSalesInventoryUpdate(false)
     }
   }
 
@@ -324,6 +370,79 @@ export function ImportsPage() {
               <dd>{runtimeInfo?.dbPath ?? '-'}</dd>
             </div>
           </dl>
+        </article>
+      </section>
+
+      <section className="content-grid content-grid-wide">
+        <article className="panel">
+          <h3>판매일보 / 재고 추가</h3>
+          <p className="page-copy" style={{ marginTop: 0 }}>
+            초기화 없이 선택한 판매일보와 재고관리 파일을 현재 DB에 반영합니다. 기존 자료를 유지하면서 누락분만 넣거나,
+            가져오기 데이터 기준으로 다시 덮어쓸 수 있습니다.
+          </p>
+
+          <div className="form-grid">
+            <label className="field">
+              <span>반영 방식</span>
+              <select
+                className="field-select"
+                onChange={(event) => setSalesInventoryMode(event.target.value as SalesInventoryImportMode)}
+                value={salesInventoryMode}
+              >
+                <option value="append">추가하기 - 같은 내용은 그대로 두고 없는 것만 추가</option>
+                <option value="overwrite">덮어쓰기 - 같은 판매/재고는 엑셀 기준으로 갱신</option>
+              </select>
+            </label>
+          </div>
+
+          <div className="button-row">
+            <button
+              className="primary-button"
+              disabled={runningSalesInventoryUpdate}
+              onClick={handleRunSalesInventoryUpdate}
+              type="button"
+            >
+              {runningSalesInventoryUpdate
+                ? '반영 중...'
+                : salesInventoryMode === 'append'
+                  ? '판매일보 / 재고 추가하기'
+                  : '판매일보 / 재고 덮어쓰기'}
+            </button>
+          </div>
+
+          <div className="note-box">
+            <strong>추가하기와 덮어쓰기</strong>
+            <p>
+              추가하기는 이미 들어온 판매/재고는 바꾸지 않고 누락된 자료만 넣습니다. 덮어쓰기는 같은 판매번호나 같은
+              판매 내역으로 판단되는 항목을 엑셀 기준으로 다시 저장하고, 재고 수량도 재고관리 파일 기준으로 맞춥니다.
+            </p>
+          </div>
+        </article>
+
+        <article className="panel">
+          <h3>판매일보 / 재고 반영 결과</h3>
+          {salesInventoryResult ? (
+            <ul className="stack-list">
+              <li>재고 신규 {salesInventoryResult.itemInsertedCount.toLocaleString('ko-KR')}개</li>
+              <li>재고 갱신 {salesInventoryResult.itemUpdatedCount.toLocaleString('ko-KR')}개</li>
+              <li>재고 유지 {salesInventoryResult.itemSkippedCount.toLocaleString('ko-KR')}개</li>
+              <li>판매 신규 {salesInventoryResult.salesInsertedCount.toLocaleString('ko-KR')}건</li>
+              <li>판매 갱신 {salesInventoryResult.salesUpdatedCount.toLocaleString('ko-KR')}건</li>
+              <li>판매 유지 {salesInventoryResult.salesSkippedCount.toLocaleString('ko-KR')}건</li>
+              <li>
+                지출 신규 {salesInventoryResult.dailyExpenseInsertedCount.toLocaleString('ko-KR')}건 / 갱신{' '}
+                {salesInventoryResult.dailyExpenseUpdatedCount.toLocaleString('ko-KR')}건 / 유지{' '}
+                {salesInventoryResult.dailyExpenseSkippedCount.toLocaleString('ko-KR')}건
+              </li>
+              <li>매칭되지 않은 타이어 이력 {salesInventoryResult.unmatchedTireLines.toLocaleString('ko-KR')}건</li>
+              <li>판매량 검증 필요 {salesInventoryResult.salesValidationIssueCount.toLocaleString('ko-KR')}건</li>
+            </ul>
+          ) : (
+            <div className="empty-state-box">
+              <strong>반영 결과가 아직 없습니다.</strong>
+              <p>왼쪽에서 반영 방식을 고른 뒤 판매일보 / 재고 반영을 실행해 주세요.</p>
+            </div>
+          )}
         </article>
       </section>
 

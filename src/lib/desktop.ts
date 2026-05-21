@@ -9,6 +9,8 @@ import type {
   ParsedVendorPriceWorkbook,
   RuntimeInfo,
   RuntimeReadyResult,
+  SalesInventoryImportMode,
+  SalesInventoryImportResult,
   VendorPriceImportResult,
 } from './types'
 
@@ -89,6 +91,18 @@ export function importInitialData(inventoryPath: string, salesPath: string) {
   return invoke<InitialImportResult>('import_initial_data', {
     inventoryPath,
     salesPath,
+  })
+}
+
+export function importSalesInventoryUpdate(
+  inventoryPath: string,
+  salesPath: string,
+  mode: SalesInventoryImportMode,
+) {
+  return invoke<SalesInventoryImportResult>('import_sales_inventory_update', {
+    inventoryPath,
+    salesPath,
+    mode,
   })
 }
 

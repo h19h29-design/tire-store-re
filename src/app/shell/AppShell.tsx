@@ -56,7 +56,7 @@ const navItems = [
 export function AppShell() {
   const desktopApp = isDesktopApp()
   const [runtimeState, setRuntimeState] = useState<'loading' | 'ready' | 'error'>(desktopApp ? 'loading' : 'error')
-  const [appVersion, setAppVersion] = useState('2.0.3')
+  const [appVersion, setAppVersion] = useState('2.0.4')
   const [runtimeMessage, setRuntimeMessage] = useState<string>(desktopApp ? text.preparingRuntime : text.desktopOnly)
 
   const handleQuotePublishTick = useEffectEvent(async () => {
@@ -75,7 +75,7 @@ export function AppShell() {
         if (active) setAppVersion(version)
       })
       .catch(() => {
-        if (active) setAppVersion('2.0.3')
+        if (active) setAppVersion('2.0.4')
       })
     return () => {
       active = false

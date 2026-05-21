@@ -119,6 +119,23 @@ export type InitialImportResult = {
   salesValidationIssueCount: number
 }
 
+export type SalesInventoryImportMode = 'append' | 'overwrite'
+
+export type SalesInventoryImportResult = {
+  mode: SalesInventoryImportMode
+  itemInsertedCount: number
+  itemUpdatedCount: number
+  itemSkippedCount: number
+  salesInsertedCount: number
+  salesUpdatedCount: number
+  salesSkippedCount: number
+  dailyExpenseInsertedCount: number
+  dailyExpenseUpdatedCount: number
+  dailyExpenseSkippedCount: number
+  unmatchedTireLines: number
+  salesValidationIssueCount: number
+}
+
 export type VendorPricePreviewRow = {
   rowNumber: number
   brandName: string
