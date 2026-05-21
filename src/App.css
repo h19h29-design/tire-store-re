@@ -230,9 +230,8 @@
 }
 
 .sales-search-panel {
-  min-height: calc(100vh - 7.5rem);
-  align-content: stretch;
-  grid-template-rows: auto minmax(0, 1fr);
+  align-content: start;
+  grid-template-rows: auto auto;
 }
 
 .sales-workbench-top {
@@ -736,7 +735,7 @@
 .compact-result-list {
   gap: 0.55rem;
   min-height: 0;
-  max-height: none;
+  max-height: 42rem;
   padding-right: 0.15rem;
 }
 
@@ -1104,6 +1103,7 @@
 }
 
 .inventory-layout .table-wrap {
+  margin-top: 0.95rem;
   max-height: clamp(30rem, 72vh, 48rem);
   overflow: auto;
 }
